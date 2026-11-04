@@ -217,9 +217,14 @@ const C7 = NOTE(27)
 
 /* ---- Sound effects ------------------------------------------------------------------ */
 
-const play = (fn) => () => {
-  if (ready()) fn()
+const play = (fn) => (...args) => {
+  if (ready()) fn(...args)
 }
+
+/** Peg bounces ring a C-major pentatonic, so a cookie bouncing down plays a little tune. */
+const PEG_NOTES = [C5, NOTE(5), E5, G5, A5, C6, NOTE(17), E6]
+let lastPegAt = 0
+let pegStep = 0
 
 export const sfx = {
   /** Ad breaks: mute everything until the break ends. */
@@ -268,57 +273,90 @@ export const sfx = {
     voice(880, 0, 0.09, { gain: 0.22, glide: 820 })
     noise(0, 0.03, { freq: 2200, q: 3, gain: 0.1 })
   }),
-  /** A round's target is shown: a bright chord with a whoosh. */
+  /** A new round: a bright chord with a whoosh. Time to poison some cups! */
   go: play(() => {
     noise(0, 0.35, { freq: 600, freqEnd: 3000, q: 0.8, gain: 0.08 })
     ;[C5, E5, G5, C6].forEach((f) => bell(f, 0.02, 0.9, 0.09))
   }),
-  /** The clock starts: a bright, high beep. */
-  beep: play(() => {
-    voice(1320, 0, 0.18, { type: 'square', filter: 3200, gain: 0.1 })
-    voice(1320, 0, 0.18, { gain: 0.12 })
+  /** Poisoning a cup: a thick, bubbly "bloop". */
+  trap: play(() => {
+    voice(320, 0, 0.16, { type: 'sine', glide: 140, gain: 0.16 })
+    voice(700, 0.05, 0.1, { type: 'triangle', glide: 1100, gain: 0.06 })
+    noise(0.02, 0.12, { freq: 900, q: 3, gain: 0.05 })
   }),
-  /** The clock goes blind: a falling whoosh and a soft low "bwoop". */
-  blind: play(() => {
-    noise(0, 0.45, { freq: 3200, freqEnd: 400, q: 0.9, gain: 0.09 })
-    voice(520, 0.02, 0.4, { type: 'triangle', glide: 140, gain: 0.1 })
+  /** Taking the poison back out: a soft pop. */
+  untrap: play(() => {
+    voice(600, 0, 0.08, { glide: 300, gain: 0.08 })
   }),
-  /** You stopped the clock: a chunky arcade-button clunk. */
-  press: play(() => {
-    thump(0, 180, 0.28)
-    noise(0, 0.05, { freq: 1600, q: 1.2, gain: 0.22 })
-    voice(900, 0.01, 0.07, { type: 'square', filter: 2000, gain: 0.05 })
+  /** Poison locked in: a firm two-note "ready". */
+  ready: play(() => {
+    bell(E5, 0, 0.25, 0.12)
+    bell(A5, 0.08, 0.5, 0.13)
   }),
-  /** Your opponent stopped theirs: a muffled click across the table. */
-  theirPress: play(() => {
-    noise(0, 0.04, { freq: 1200, q: 1.5, gain: 0.12 })
-    thump(0, 150, 0.12)
+  /** Your opponent locked theirs in: a little tick across the table. */
+  theirReady: play(() => {
+    bell(G5, 0, 0.3, 0.06)
   }),
-  /** The times are about to show: a short, building drum roll. */
-  drum: play(() => {
-    const hits = 7
-    for (let i = 0; i < hits; i += 1) {
-      const t = (i / hits) * 0.5 * (1 - i * 0.03)
-      thump(t, 150 + i * 8, 0.05 + i * 0.014)
-    }
+  /** It's your turn to drop: a rising "your go!" chime. */
+  yourTurn: play(() => {
+    ;[G4, C5, E5, G5].forEach((f, i) => bell(f, i * 0.06, 0.5, 0.1))
   }),
-  /** You won the round: a friendly two-note chime. */
-  roundWin: play(() => {
-    bell(G5, 0, 0.4, 0.15)
-    bell(C6, 0.12, 0.7, 0.16)
+  /** Letting go of the cookie: a click off the launcher and a little whoosh. */
+  drop: play(() => {
+    noise(0, 0.04, { freq: 2200, q: 1.5, gain: 0.12 })
+    voice(500, 0, 0.12, { type: 'triangle', glide: 260, gain: 0.08 })
+    noise(0.02, 0.3, { freq: 900, freqEnd: 2400, q: 0.9, gain: 0.05 })
   }),
-  /** You lost the round: the button zaps you, an electric buzz and a cartoon "boing". */
-  zap: play(() => {
-    voice(110, 0, 0.32, { type: 'sawtooth', filter: 2400, gain: 0.09, vibrato: 60 })
-    noise(0, 0.3, { freq: 5000, q: 2, gain: 0.08 })
-    voice(520, 0.22, 0.3, { type: 'triangle', glide: 180, gain: 0.07, vibrato: 30 })
+  /**
+   * The cookie knocks a peg: a woody plink, louder for a harder knock, climbing the
+   * scale as it bounces down. Never more than one every 35 ms.
+   */
+  peg: play((speed = 1) => {
+    const now = ctx.currentTime
+    if (now - lastPegAt < 0.035) return
+    lastPegAt = now
+    const f = PEG_NOTES[pegStep % PEG_NOTES.length]
+    pegStep += 1 + Math.floor(Math.random() * 2)
+    const g = Math.min(0.16, 0.04 + speed * 0.04)
+    bell(f, 0, 0.22, g, sfxBus, 0.15)
+    noise(0, 0.025, { freq: 3000, q: 2, gain: g * 0.4 })
   }),
-  /** A bullseye: a magical sparkle. */
-  bullseye: play(() => {
-    ;[C6, E6, G6, C7, E6, C7].forEach((f, i) => bell(f, i * 0.06, 0.6, 0.11))
-    noise(0, 0.6, { filter: 'highpass', freq: 7000, freqEnd: 11000, gain: 0.04, reverb: 0.6 })
+  /** Into the milk, safe: a plop, a splash and a happy sparkle. */
+  splash: play(() => {
+    pegStep = 0
+    voice(260, 0, 0.18, { glide: 620, gain: 0.16 })
+    noise(0.03, 0.45, { filter: 'lowpass', freq: 2400, freqEnd: 600, q: 0.7, gain: 0.14 })
+    ;[C6, E6, G6].forEach((f, i) => bell(f, 0.12 + i * 0.06, 0.5, 0.07))
   }),
-  /** Ejected from the chair: a spring "sproing" and a whoosh. */
+  /** Someone else's cookie in the milk, at a nearby table: just the plop. */
+  splashFar: play(() => {
+    voice(260, 0, 0.14, { glide: 520, gain: 0.05 })
+    noise(0.02, 0.25, { filter: 'lowpass', freq: 1800, q: 0.7, gain: 0.04 })
+  }),
+  /** Your cookie fell in the poison: a gurgle, a buzz and a sinking "bwomp". */
+  poisoned: play(() => {
+    pegStep = 0
+    for (let i = 0; i < 6; i += 1) voice(180 + Math.random() * 120, i * 0.06, 0.1, { glide: 90, gain: 0.08 })
+    voice(110, 0.05, 0.4, { type: 'sawtooth', filter: 1800, gain: 0.08, vibrato: 50 })
+    voice(440, 0.3, 0.55, { type: 'triangle', glide: 110, gain: 0.1 })
+  }),
+  /** Someone else's cookie in poison, at a nearby table: a quiet gurgle. */
+  poisonFar: play(() => {
+    for (let i = 0; i < 3; i += 1) voice(180 + Math.random() * 120, i * 0.06, 0.1, { glide: 90, gain: 0.03 })
+  }),
+  /** Your opponent's cookie fell in YOUR poison: a sneaky "gotcha" sting. */
+  gotcha: play(() => {
+    pegStep = 0
+    for (let i = 0; i < 4; i += 1) voice(200 + Math.random() * 100, i * 0.05, 0.08, { glide: 100, gain: 0.05 })
+    ;[NOTE(3), NOTE(6), NOTE(10), NOTE(15)].forEach((f, i) =>
+      voice(f, 0.15 + i * 0.09, 0.2, { type: 'square', filter: 2600, gain: 0.06 }),
+    )
+  }),
+  /** Your opponent dodged your poison: a disappointed "aww" slide. */
+  dodged: play(() => {
+    voice(NOTE(3), 0.3, 0.45, { type: 'triangle', glide: NOTE(-2), gain: 0.06, vibrato: 4 })
+  }),
+  /** Launched after losing: a spring "sproing" and a whoosh. */
   eject: play(() => {
     voice(180, 0, 0.45, { type: 'triangle', glide: 900, gain: 0.12, vibrato: 25 })
     noise(0.05, 0.5, { freq: 500, freqEnd: 3000, q: 0.8, gain: 0.09 })

@@ -12,6 +12,7 @@ const { flushScores, installLeaderboardReporter } = require('./bloxity/leaderboa
 const { installRoomReporter } = require('./bloxity/roomReporter')
 const DATA = require('./game/data')
 const GameRoom = require('./game/GameRoom')
+const { loadPlinko } = require('./game/plinko')
 const profiles = require('./game/profiles')
 const { recordGemGrant } = require('./game/gemGrants')
 
@@ -65,7 +66,7 @@ function configureApp(app) {
     res.json({ ok: true })
   })
 
-  /** Live room occupancy, handy while testing the 20-player cap. */
+  /** Live room occupancy, handy while testing the 30-player cap. */
   app.get('/api/rooms', async (_req, res) => {
     const rooms = await matchMaker.query({ name: DATA.bloxity.roomName })
     res.json(rooms.map((r) => ({ id: r.roomId, players: r.clients, max: r.maxClients, locked: r.locked })))
@@ -148,15 +149,17 @@ const gameServer = new Server({
 // NOTE: like /api/legion-auth above, the game trusts the Bloxity user id the client
 // sends when joining (see Session.resolveIdentity). Verify the Bloxity token there
 // before real money or leaderboards depend on it.
-gameServer.define(DATA.bloxity.roomName, GameRoom)
+// joinOrCreate puts a joining player in the fullest room that still has a place
+// (not merely the oldest), so nobody lands alone in a quiet lobby while another is
+// lively; a new room opens only when every room is full.
+gameServer.define(DATA.bloxity.roomName, GameRoom).sortBy({ clients: -1 })
 // Colyseus owns SIGINT/SIGTERM: it lets every room run onLeave (which banks
 // progress) before this final save.
 gameServer.onShutdown(async () => {
   await Promise.all([profiles.flushNow(), flushScores()])
 })
 
-profiles
-  .init()
+Promise.all([profiles.init(), loadPlinko()])
   .then(() => gameServer.listen(PORT))
   .then(() => {
     installRoomReporter() // no-op outside a Bloxity hosting deployment

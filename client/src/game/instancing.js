@@ -33,8 +33,8 @@ export function setInstanceColor(mesh, i, hex) {
 }
 
 /**
- * Merges several boxes into one geometry, so a multi-part prop (a chair, a table's
- * legs) is a single instanced draw call.
+ * Merges several boxes into one geometry, so a multi-part prop (a table's woodwork,
+ * a lamp post) is a single instanced draw call.
  * @param {Array<{ size: [number, number, number], at: [number, number, number] }>} parts
  */
 export function mergedBoxes(parts) {

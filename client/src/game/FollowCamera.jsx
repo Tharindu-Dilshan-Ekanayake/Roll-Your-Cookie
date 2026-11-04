@@ -4,8 +4,9 @@ import { Vector3 } from 'three'
 
 import { usePlatform } from '../bloxity/platform'
 import { useGame } from '../net/gameStore'
-import { actionFx, localPlayer, SELF_ANCHOR } from '../net/liveState'
-import { seatSide, TABLE, tableById, tableLocal } from './layout'
+import { localPlayer } from '../net/liveState'
+import { CUP_X } from './board'
+import { tableById, tableLocal } from './layout'
 
 /** How high above the player's feet the camera aims. */
 const LOOK_HEIGHT = 2
@@ -35,21 +36,18 @@ const LOOK_SMOOTHING = 8
 const TABLE_SMOOTHING = 3
 
 /**
- * Seated view: over your shoulder, looking across the timer at your opponent, a
- * little to your right so your own head doesn't hide the display.
+ * Duel view, the same for both players: high behind the cups, looking down the
+ * board at the launcher, with you and your opponent either side of it. In the
+ * table's frame (the board runs along X, cups at +X). Framed so the launcher sits
+ * about a quarter of the way down the screen (clear of the duel bar) and the cups
+ * about three quarters (clear of the buttons along the bottom).
  */
-const DUEL_CAM_BACK = 2
-const DUEL_CAM_HEIGHT = 2.75
-const DUEL_CAM_SIDE = 0.6
-/** Where the view aims: just past the timer, in the table's frame (towards the opponent). */
-const DUEL_LOOK_PAST = 0.45
-const DUEL_LOOK_HEIGHT = TABLE.height + 0.38
-/** After a win: from the opponent's end, looking at you dancing on the table. */
-const WIN_CAM_BACK = 2.9
-const WIN_CAM_HEIGHT = 2.5
-const WIN_LOOK_HEIGHT = 1.8
-/** Extra distance back on portrait screens. */
-const PORTRAIT_BACK = 0.9
+const DUEL = {
+  landscape: { back: 1.8, height: 3.7, lookX: 0.18, lookY: 0.95 },
+  /** Tall screens: higher and steeper, so the board fills the narrow width. */
+  portrait: { back: 1.2, height: 4.6, lookX: -0.06, lookY: 0.95 },
+}
+const lerp = (a, b, t) => a + (b - a) * t
 
 const _desired = new Vector3()
 const _target = new Vector3()
@@ -58,8 +56,8 @@ const _target = new Vector3()
  * Third-person orbit camera that trails the local player.
  * Right-drag (mouse) or one-finger drag (touch) orbits; the wheel zooms.
  *
- * While the player is seated at a table it swings round behind their shoulder, the
- * duel view, and orbiting is disabled.
+ * While the player is at a table it swings round behind the cups, the duel view,
+ * and orbiting is disabled.
  */
 export function FollowCamera() {
   const camera = useThree((s) => s.camera)
@@ -149,22 +147,14 @@ export function FollowCamera() {
     const table = match && tableById(match.table)
 
     if (table) {
-      // A winner dancing up on the table: swing round to their front once the dance
-      // starts. A portrait screen is narrow: step back so the timer and the opponent fit.
-      const won = match.won && Date.now() >= (actionFx.get(SELF_ANCHOR)?.danceAt || 0)
-      const portrait = size.height > size.width ? PORTRAIT_BACK : 0
-      const side = seatSide(match.seat)
-      if (won) {
-        const [cx, cz] = tableLocal(table, 0, -side * WIN_CAM_BACK)
-        const [lx, lz] = tableLocal(table, 0, side * (TABLE.seatZ - 0.75))
-        _desired.set(cx, WIN_CAM_HEIGHT, cz)
-        _target.set(lx, WIN_LOOK_HEIGHT, lz)
-      } else {
-        const [cx, cz] = tableLocal(table, side * DUEL_CAM_SIDE, side * (TABLE.seatZ + DUEL_CAM_BACK + portrait))
-        const [lx, lz] = tableLocal(table, 0, -side * DUEL_LOOK_PAST)
-        _desired.set(cx, DUEL_CAM_HEIGHT + portrait * 0.5, cz)
-        _target.set(lx, DUEL_LOOK_HEIGHT, lz)
-      }
+      // Square screens get a view between the two.
+      const aspect = size.width / size.height
+      const p = Math.min(1, Math.max(0, (1.2 - aspect) / 0.6))
+      const { landscape: L, portrait: P } = DUEL
+      const [cx, cz] = tableLocal(table, CUP_X + lerp(L.back, P.back, p), 0)
+      const [lx, lz] = tableLocal(table, lerp(L.lookX, P.lookX, p), 0)
+      _desired.set(cx, lerp(L.height, P.height, p), cz)
+      _target.set(lx, lerp(L.lookY, P.lookY, p), lz)
       const k = 1 - Math.pow(0.001, delta * (TABLE_SMOOTHING / 10) * 3)
       camera.position.lerp(_desired, k)
       lookAt.current.lerp(_target, k)

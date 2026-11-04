@@ -1,10 +1,10 @@
 ---
-gameSlug: slap-chips
+gameSlug: roll-your-cookie
 clientDir: client
 buildCommand: npm ci && npm run build
 distDir: client/dist
 multiplayer: true
-roomSize: 20
+roomSize: 30
 canDie: false
 hasScore: true
 leaderboards:
@@ -30,7 +30,7 @@ leaderboards:
     reset: none
 notApplicable:
   deathScreen: >-
-    A player cannot die. Losing a duel launches the player out of their chair
+    A player cannot die. Losing a duel launches the player away from the table
     (a short cartoon ejection) and sends them back to the lobby; it is not a death.
   rewardedAds: >-
     The game has no reward earned by watching an ad yet. Add a "watch ad" reward
@@ -50,3 +50,9 @@ notApplicable:
 - The game server verifies every signed-in player's Bloxity token
   (`/v1/auth/game-token/verify`) and carries guest progress into a new account
   (`carriedFrom`).
+- Lobbies hold up to 30 players. Joining fills the fullest lobby that still has a
+  place (`sortBy({ clients: -1 })` in `server/src/server.js`); a new one opens only
+  when every lobby is full.
+- A player with no activity at all for `afk.warnSec` (70 s) is asked "Still there?";
+  at `afk.kickSec` (90 s) they are moved out so the place goes to someone else
+  (`GameRoom.checkAway`, close code 4101). One tap on "Play again" rejoins.

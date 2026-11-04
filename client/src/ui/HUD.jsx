@@ -2,10 +2,11 @@ import { useEffect } from 'react'
 
 import { useBloxity } from '../bloxity/BloxityContext'
 import { sfx } from '../audio/sfx'
+import { send } from '../net/api'
 import { isPlayingPhase, useGame } from '../net/gameStore'
 import { money, useNow } from './format'
 
-const HELP_SEEN_KEY = 'blindstop-seen-help'
+const HELP_SEEN_KEY = 'cookiedrop-seen-help'
 
 const open = (modal, tab) => {
   sfx.click()
@@ -168,9 +169,9 @@ function LeftTiles({ profile, now }) {
       <div className="hud-tile-group flex flex-col gap-3">
         <Tile
           label="SHOP"
-          icon="🧺"
+          icon="🍪"
           gradient="bg-gradient-to-b from-[#ffe94d] via-[#ffb02e] to-[#ff7a3d]"
-          onClick={() => open('shop', 'chairs')}
+          onClick={() => open('shop', 'cookies')}
         />
         <Tile
           label="ITEMS"
@@ -252,12 +253,37 @@ function LevelUpBanner() {
 }
 
 /**
+ * PLAY: straight to the best free table (someone waiting for an opponent first),
+ * from anywhere in the lobby. Walking up to a table and pressing E works too; a bot
+ * is only offered at a table (see InteractPrompt and MatchUI). Only shown once the
+ * game server is there to seat you.
+ */
+function PlayButton() {
+  const online = useGame((s) => s.status === 'online')
+  if (!online) return null
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        sfx.click()
+        send({ t: 'quick' })
+      }}
+      className="play-pos btn-3d press play-pulse pointer-events-auto absolute left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 bg-gradient-to-b from-[#7dff7a] via-[#2fd14f] to-[#169a3a] px-7 py-2.5 text-white"
+    >
+      <span className="text-[1.9rem] leading-none">🍪</span>
+      <span className="stroke-text text-[1.9rem] font-bold leading-none">PLAY</span>
+    </button>
+  )
+}
+
+/**
  * The lobby HUD. Bloxity's toolbar owns the top-left; nothing of ours goes there.
  *   top-right bar: ❓ guide, ⚙️ settings (outside Bloxity) and the name card, one row
  *     lined up with Bloxity's toolbar (same top, same height) and ending before it
  *   left: cash + wins and Shop / Items / Rewards (daily + gift)
  *   right: Quests / Starter Pack
- * Seated at a table, only what the duel needs stays on screen.
+ *   bottom: PLAY
+ * At a table, only what the duel needs stays on screen.
  */
 export function HUD() {
   const profile = useGame((s) => s.profile)
@@ -298,6 +324,7 @@ export function HUD() {
       )}
       {!match && (
         <>
+          <PlayButton />
           <LeftTiles profile={profile} now={now} />
           <RightTiles profile={profile} />
           <Currency

@@ -12,11 +12,13 @@ import { createTileTexture, createWorldDiscGeometry } from './textures'
 import { archBoxes } from './arch'
 import ContactShadows from './ContactShadows'
 import ArchSign from './ArchGate'
-import ClockTower from './ClockTower'
 import GuideBoard from './GuideBoard'
 import Instanced from './Instanced'
 import Island from './Island'
 import { gearStandBoxes } from './islandGeometry'
+import { MILK_CARTON } from './layout'
+import MilkTower from './MilkTower'
+import { Sign } from './Shops'
 import { useDisposable } from './useDisposable'
 
 /** World size of one ground texture repeat (2 x 2 flagstones of 1 unit). */
@@ -54,24 +56,22 @@ function createRugTexture() {
 }
 
 /**
- * All the box-built scenery (the welcome gate, the gears' stands, and the square's
- * lamp posts, string lights, planters, clock tower, hourglass and Store) as
- * instances of one unit cube: one draw call.
+ * All the box-built scenery (the welcome gate, the giant cookies' stands, and the
+ * square's lamp posts, string lights, planters, the milk glass's plinth, the milk
+ * carton and the Cookie Shop) as instances of one unit cube: one draw call.
  */
 const SCENERY = [...archBoxes(), ...gearStandBoxes(), ...lobbyBoxes()]
 
 /**
  * The map: a round island floating above a sea of clouds at sunset (see Island),
- * paved in lavender flagstones, with the clock-tower square in the middle (see
+ * paved in lavender flagstones, with the milk-glass square in the middle (see
  * layout.js and lobby.js).
  *
  * Repeated props are instanced and multi-part props are merged, so the whole
- * landscape is a dozen or so draw calls.
- *
- * @param {{ extras?: 'off' | 'warming' | 'on' }} props `extras` controls the shops and
- *   leaderboards, which GameScene holds back until the game is playable.
+ * landscape is a dozen or so draw calls. Everything mounts during the loading
+ * screen (and has its shaders compiled there), so nothing pops in once you play.
  */
-export function World({ extras = 'on' }) {
+export function World() {
   const settings = useSettings()
   const shadows = settings.shadows
 
@@ -132,20 +132,20 @@ export function World({ extras = 'on' }) {
       <Instanced geometry={res.box} material={res.tinted} items={SCENERY} castShadow={shadows} receiveShadow />
       <Instanced geometry={res.box} material={res.bulb} items={LAMP_BULBS} />
       <ArchSign />
-      <ClockTower />
+      <MilkTower />
       <GuideBoard />
+      <Sign
+        lines={[{ text: 'MILK 🥛', size: 56, color: '#4f8dff', stroke: '#ffffff' }]}
+        position={[MILK_CARTON.x, 5.1, MILK_CARTON.z]}
+        height={0.7}
+        scale={1.6}
+      />
       {/* Realtime shadows are off on LOW: soft baked ones keep the depth. */}
       {!shadows && <ContactShadows />}
 
       <Tables />
-      {extras !== 'off' && (
-        // Mounted hidden while their shaders compile in the background (see
-        // ShaderWarmup in GameScene), then shown.
-        <group visible={extras === 'on'}>
-          <Shops />
-          <Leaderboards />
-        </group>
-      )}
+      <Shops />
+      <Leaderboards />
     </>
   )
 }

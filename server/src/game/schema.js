@@ -4,18 +4,21 @@ const { schema, t } = require('@colyseus/schema')
  * Synchronised room state. Colyseus diffs it and sends only changed fields to every
  * client at the room's patch rate.
  *
- * Only public information lives here. The time each player stopped their clock (until
- * the round is revealed), their duel view and their profile (cash, inventory) go to
- * that player alone as messages.
+ * Only public information lives here. Which cups each player has poisoned, their duel
+ * view and their profile (cash, inventory) go to that player alone as messages. A
+ * roll's aim and seed are broadcast as a 'roll' message the moment it happens (a
+ * patch could be up to 100 ms late), and every client animates it.
  */
 
 const PlayerState = schema(
   {
     name: t.string(),
-    /** Bloxity account id ('' for guests): matches chat messages to players. */
+    /** Bloxity account id ('' for guests and bots): matches chat messages to players. */
     uid: t.string(),
     /** Bloxity username, for the platform's friend-join toasts. */
     uname: t.string(),
+    /** A computer opponent filling an empty seat (see Bot.js). */
+    bot: t.boolean(),
     streak: t.uint16(),
     level: t.uint16(),
     /** Title worn (a DATA.titles id, '' = none). */
@@ -40,36 +43,32 @@ const PlayerState = schema(
 
 const TableState = schema(
   {
-    /** 'waiting' | 'countdown' | 'target' | 'running' | 'reveal' | 'ended' */
+    /** 'waiting' | 'countdown' | 'poison' | 'aim' | 'rolling' | 'reveal' | 'ended' */
     phase: t.string(),
-    /** Session ids in the two seats ('' when empty), and each one's equipped chair. */
+    /** Session ids in the two seats ('' when empty), and each one's equipped cookie. */
     seat0: t.string(),
     seat1: t.string(),
-    chair0: t.string(),
-    chair1: t.string(),
-    /** Session id of the duel's winner while the result shows: they dance on the table. */
+    cookie0: t.string(),
+    cookie1: t.string(),
+    /** Session id of the duel's winner while the result shows: they dance by the table. */
     winner: t.string(),
     /** Server epoch ms when the current phase times out (0 when it doesn't). */
     endsAt: t.float64(),
-    /** Server epoch ms when this round's clock starts (0 outside a round). */
-    startAt: t.float64(),
-    /** Round number (1-based), its target time and how long the clock shows, in ms. */
+    /** Server epoch ms when the current aim began: the launcher's sweep starts then. */
+    aimAt: t.float64(),
+    /** Round number (1-based) and how many cups each player poisons in it. */
     round: t.uint8(),
-    target: t.uint32(),
-    show: t.uint16(),
-    score0: t.uint8(),
-    score1: t.uint8(),
-    /** Each seat has stopped its clock this round (the time itself stays secret). */
-    stop0: t.boolean(),
-    stop1: t.boolean(),
-    /**
-     * Each seat's stopped time once the round is revealed, in ms: -1 still secret,
-     * -2 never pressed.
-     */
-    time0: t.int32(),
-    time1: t.int32(),
-    /** Seat that won the round being revealed, -1 for a tie (or none). */
-    rwin: t.int8(),
+    poisons: t.uint8(),
+    hearts0: t.uint8(),
+    hearts1: t.uint8(),
+    /** Seat whose turn it is to drop (aim / rolling / reveal), -1 otherwise. */
+    turn: t.int8(),
+    /** Each seat has locked in its poison this round. */
+    ready0: t.boolean(),
+    ready1: t.boolean(),
+    /** The last roll's cup (-1 none) and what was in it: -1 milk, else a DATA.poisonKinds index. */
+    lastCup: t.int8(),
+    lastKind: t.int8(),
   },
   'Table',
 )

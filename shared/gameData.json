@@ -1,7 +1,8 @@
 {
-  "title": "Blind Stop",
+  "title": "Cookie Drop Duel",
+  "tagline": "Drop your cookie. Dodge the poison. Dunk in the milk!",
   "bloxity": {
-    "gameSlug": "slap-chips",
+    "gameSlug": "roll-your-cookie",
     "roomName": "game",
     "leaderboards": [
       {
@@ -38,44 +39,83 @@
       }
     ]
   },
-  "roomSize": 20,
-  "timer": {
-    "winsNeeded": 2,
-    "maxRounds": 5,
-    "rounds": [
-      {
-        "min": 5,
-        "max": 9,
-        "show": 3
-      },
-      {
-        "min": 6,
-        "max": 12,
-        "show": 2
-      },
-      {
-        "min": 8,
-        "max": 15,
-        "show": 1
-      }
+  "roomSize": 30,
+  "duel": {
+    "hearts": 3,
+    "cups": 7,
+    "poisons": [
+      3,
+      4,
+      4,
+      5,
+      5
     ],
-    "overSec": 5,
-    "lagMs": 300,
-    "bullseyeMs": 50,
-    "bullseyeCash": 50,
-    "closeMs": 250
+    "maxRounds": 12,
+    "milkBonus": 5
   },
-  "forfeit": {
-    "penalty": 50
-  },
-  "winReward": 200,
   "timing": {
     "countdown": 3,
-    "target": 3,
-    "reveal": 4,
+    "poison": 12,
+    "aim": 9,
+    "reveal": 1.6,
     "results": 5,
     "loserRespawn": 3.4
   },
+  "bot": {
+    "maxLobbyPlayers": 10,
+    "rewardScale": 0.5,
+    "names": [
+      "Toffee",
+      "Biscotti",
+      "Snickerdoodle",
+      "Crumbs",
+      "Mochi",
+      "Butterscotch",
+      "Gingersnap",
+      "Shortbread",
+      "Cocoa",
+      "Sprinkles",
+      "Pudding",
+      "Waffles"
+    ]
+  },
+  "poisonKinds": [
+    {
+      "id": "poison",
+      "name": "Poison",
+      "icon": "☠️",
+      "color": "#7dff3a"
+    },
+    {
+      "id": "hotsauce",
+      "name": "Hot Sauce",
+      "icon": "🌶️",
+      "color": "#ff3b1f"
+    },
+    {
+      "id": "slime",
+      "name": "Slime",
+      "icon": "🧪",
+      "color": "#b14dff"
+    },
+    {
+      "id": "lava",
+      "name": "Lava",
+      "icon": "🌋",
+      "color": "#ff8a1f"
+    },
+    {
+      "id": "ink",
+      "name": "Squid Ink",
+      "icon": "🦑",
+      "color": "#2d3a8c"
+    }
+  ],
+  "forfeit": {
+    "penalty": 50
+  },
+  "winReward": 150,
+  "lossReward": 25,
   "world": {
     "half": 31,
     "spawn": [
@@ -85,71 +125,102 @@
     ]
   },
   "table": {
-    "width": 1.5,
-    "depth": 1.9,
-    "height": 0.82,
-    "seatZ": 1.3,
+    "width": 3.7,
+    "depth": 2.6,
+    "height": 0.95,
+    "seatX": -0.55,
+    "seatZ": 1.75,
     "sitRange": 3.6
   },
   "tables": [
     {
       "id": 1,
       "x": -9,
-      "z": -12,
+      "z": -12.5,
       "ry": 1.5708
     },
     {
       "id": 2,
       "x": -9,
-      "z": -6,
+      "z": -7.5,
       "ry": 1.5708
     },
     {
       "id": 3,
       "x": -9,
-      "z": 0,
+      "z": -2.5,
       "ry": 1.5708
     },
     {
       "id": 4,
       "x": -9,
-      "z": 6,
+      "z": 2.5,
       "ry": 1.5708
     },
     {
       "id": 5,
       "x": -9,
-      "z": 12,
+      "z": 7.5,
       "ry": 1.5708
     },
     {
       "id": 6,
-      "x": 9,
-      "z": -12,
+      "x": -9,
+      "z": 12.5,
       "ry": 1.5708
     },
     {
       "id": 7,
       "x": 9,
-      "z": -6,
+      "z": -12.5,
       "ry": 1.5708
     },
     {
       "id": 8,
       "x": 9,
-      "z": 0,
+      "z": -7.5,
       "ry": 1.5708
     },
     {
       "id": 9,
       "x": 9,
-      "z": 6,
+      "z": -2.5,
       "ry": 1.5708
     },
     {
       "id": 10,
       "x": 9,
-      "z": 12,
+      "z": 2.5,
+      "ry": 1.5708
+    },
+    {
+      "id": 11,
+      "x": 9,
+      "z": 7.5,
+      "ry": 1.5708
+    },
+    {
+      "id": 12,
+      "x": 9,
+      "z": 12.5,
+      "ry": 1.5708
+    },
+    {
+      "id": 13,
+      "x": 0,
+      "z": 4.5,
+      "ry": 1.5708
+    },
+    {
+      "id": 14,
+      "x": 0,
+      "z": 9.5,
+      "ry": 1.5708
+    },
+    {
+      "id": 15,
+      "x": 0,
+      "z": 14.5,
       "ry": 1.5708
     }
   ],
@@ -189,244 +260,234 @@
     "x": -23,
     "z": 0
   },
-  "chairs": [
+  "cookies": [
     {
-      "id": "basic",
-      "name": "Basic",
+      "id": "classic",
+      "name": "Classic Chip",
       "rarity": "common",
       "price": 0,
-      "color": "#6b4329",
-      "finish": "wood"
+      "style": "chips",
+      "dough": "#d9a05b",
+      "toppings": [
+        "#3d2314"
+      ]
     },
     {
-      "id": "metal",
-      "name": "Metal Chair",
+      "id": "sugar",
+      "name": "Sugar Sprinkle",
       "rarity": "common",
-      "price": 100,
-      "color": "#8a96a8",
-      "finish": "metal",
+      "price": 150,
+      "style": "sprinkles",
+      "dough": "#f3dcae",
+      "toppings": [
+        "#ff4f7b",
+        "#4fc3ff",
+        "#ffe14f",
+        "#7dff6a",
+        "#c27bff"
+      ],
       "lobby": true
     },
     {
-      "id": "picnic",
-      "name": "Picnic Chair",
+      "id": "oat",
+      "name": "Oat & Raisin",
       "rarity": "common",
       "price": 300,
-      "color": "#e8504a",
-      "finish": "paint",
-      "lobby": true
+      "style": "chips",
+      "dough": "#c99a62",
+      "toppings": [
+        "#5a2440",
+        "#ead7a8"
+      ]
     },
     {
-      "id": "nature",
-      "name": "Nature Chair",
+      "id": "choco",
+      "name": "Double Choco",
       "rarity": "uncommon",
-      "price": 800,
-      "color": "#2fd14f",
-      "finish": "paint",
+      "price": 600,
+      "style": "chips",
+      "dough": "#5b3421",
+      "toppings": [
+        "#fff3dc"
+      ],
       "lobby": true
     },
     {
-      "id": "candy",
-      "name": "Candy Chair",
+      "id": "berry",
+      "name": "Strawberry Glaze",
       "rarity": "uncommon",
-      "price": 1200,
-      "color": "#ff7fc8",
-      "finish": "paint",
+      "price": 1000,
+      "style": "glaze",
+      "dough": "#e6ae74",
+      "glaze": "#ff8fb8",
+      "toppings": [
+        "#ffffff",
+        "#ff3b6b"
+      ],
       "lobby": true
     },
     {
-      "id": "storm",
-      "name": "Storm Chair",
+      "id": "matcha",
+      "name": "Matcha Crunch",
+      "rarity": "uncommon",
+      "price": 1400,
+      "style": "chips",
+      "dough": "#9cc46a",
+      "toppings": [
+        "#fffaf0"
+      ]
+    },
+    {
+      "id": "mint",
+      "name": "Mint Macaron",
       "rarity": "rare",
-      "price": 2000,
-      "color": "#7fe3ff",
-      "finish": "glow",
+      "price": 2200,
+      "style": "sandwich",
+      "dough": "#8de8b8",
+      "cream": "#fff8ec",
       "lobby": true
     },
     {
-      "id": "ocean",
-      "name": "Ocean Chair",
+      "id": "midnight",
+      "name": "Midnight Cream",
       "rarity": "rare",
       "price": 3000,
-      "color": "#2f7dff",
-      "finish": "paint",
+      "style": "sandwich",
+      "dough": "#2b1e1b",
+      "cream": "#f7f2ea",
+      "lobby": true
+    },
+    {
+      "id": "lemon",
+      "name": "Lemon Drop",
+      "rarity": "rare",
+      "price": 3800,
+      "style": "glaze",
+      "dough": "#f0cf78",
+      "glaze": "#fff4a3",
+      "toppings": [
+        "#ffd23d",
+        "#ffffff"
+      ]
+    },
+    {
+      "id": "galaxy",
+      "name": "Galaxy Gem",
+      "rarity": "epic",
+      "price": 5500,
+      "style": "gems",
+      "dough": "#3a2470",
+      "toppings": [
+        "#5ff3ff",
+        "#ff7ad9",
+        "#ffe36b",
+        "#c27bff"
+      ],
+      "glow": 0.6,
       "lobby": true
     },
     {
       "id": "lava",
-      "name": "Lava Chair",
+      "name": "Molten Lava",
       "rarity": "epic",
-      "price": 5000,
-      "color": "#ff5a1f",
-      "finish": "glow",
+      "price": 8000,
+      "style": "lava",
+      "dough": "#3b1a12",
+      "toppings": [
+        "#ff6a1f",
+        "#ffd23d"
+      ],
+      "glow": 0.9,
+      "lobby": true
+    },
+    {
+      "id": "frost",
+      "name": "Frost Bite",
+      "rarity": "legendary",
+      "price": 12000,
+      "style": "glaze",
+      "dough": "#bfe6ff",
+      "glaze": "#ffffff",
+      "toppings": [
+        "#7fd8ff",
+        "#ffffff"
+      ],
+      "glow": 0.25,
       "lobby": true
     },
     {
       "id": "golden",
-      "name": "Golden Throne",
-      "rarity": "epic",
-      "price": 9000,
-      "color": "#ffc93d",
-      "style": "throne",
-      "finish": "metal",
+      "name": "Golden Crunch",
+      "rarity": "legendary",
+      "price": 18000,
+      "style": "chips",
+      "dough": "#ffc93d",
+      "toppings": [
+        "#fff6c8"
+      ],
+      "glow": 0.3,
+      "shine": 1,
       "lobby": true
     },
     {
-      "id": "void",
-      "name": "Void Throne",
-      "rarity": "legendary",
-      "price": 16000,
-      "color": "#9b3dff",
-      "style": "throne",
-      "finish": "glow",
+      "id": "rainbow",
+      "name": "Rainbow Royale",
+      "rarity": "mythic",
+      "price": 30000,
+      "style": "sprinkles",
+      "dough": "#fff1d8",
+      "toppings": [
+        "#ff3b3b",
+        "#ffb21e",
+        "#ffee32",
+        "#3bff6f",
+        "#33c8ff",
+        "#b14dff",
+        "#ff4fb8"
+      ],
+      "glow": 0.3,
       "lobby": true
     },
     {
       "id": "diamond",
-      "name": "Diamond Throne",
+      "name": "Diamond Dream",
       "rarity": "mythic",
-      "price": 30000,
-      "color": "#8ff4ff",
-      "style": "throne",
-      "finish": "gem",
-      "lobby": true
+      "price": 50000,
+      "style": "gems",
+      "dough": "#8ff4ff",
+      "toppings": [
+        "#ffffff",
+        "#c9fbff",
+        "#7fe3ff"
+      ],
+      "glow": 0.5,
+      "shine": 1
     },
     {
-      "id": "oak",
-      "name": "Oak Wood Chair",
-      "rarity": "common",
-      "price": 250,
-      "color": "#b5773e",
-      "finish": "wood"
-    },
-    {
-      "id": "bamboo",
-      "name": "Bamboo Chair",
-      "rarity": "common",
-      "price": 450,
-      "color": "#c8b45a",
-      "finish": "wood"
-    },
-    {
-      "id": "bronze",
-      "name": "Bronze Chair",
-      "rarity": "uncommon",
-      "price": 1000,
-      "color": "#c27a3a",
-      "finish": "metal"
-    },
-    {
-      "id": "silver",
-      "name": "Silver Chair",
-      "rarity": "rare",
-      "price": 2500,
-      "color": "#c3cad4",
-      "finish": "metal"
-    },
-    {
-      "id": "snow",
-      "name": "Snow Chair",
-      "rarity": "rare",
-      "price": 3500,
-      "color": "#bfe6ff",
-      "style": "snow",
-      "finish": "frost"
-    },
-    {
-      "id": "neon",
-      "name": "Neon Chair",
-      "rarity": "rare",
-      "price": 4000,
-      "color": "#39ff6a",
-      "finish": "glow"
-    },
-    {
-      "id": "gold",
-      "name": "Gold Chair",
-      "rarity": "epic",
-      "price": 6500,
-      "color": "#ffbf1f",
-      "finish": "metal"
-    },
-    {
-      "id": "emerald",
-      "name": "Emerald Chair",
-      "rarity": "epic",
-      "price": 7500,
-      "color": "#14c95f",
-      "finish": "gem"
-    },
-    {
-      "id": "ruby",
-      "name": "Ruby Chair",
-      "rarity": "epic",
-      "price": 8000,
-      "color": "#ff2448",
-      "finish": "gem"
-    },
-    {
-      "id": "frost",
-      "name": "Frost Throne",
-      "rarity": "legendary",
-      "price": 12000,
-      "color": "#9fdcff",
-      "style": "throne",
-      "finish": "frost"
-    },
-    {
-      "id": "sapphire",
-      "name": "Sapphire Chair",
-      "rarity": "legendary",
-      "price": 13000,
-      "color": "#2f6bff",
-      "finish": "gem"
-    },
-    {
-      "id": "platinum",
-      "name": "Platinum Chair",
-      "rarity": "legendary",
-      "price": 15000,
-      "color": "#e4e6ea",
-      "finish": "metal"
-    },
-    {
-      "id": "obsidian",
-      "name": "Obsidian Throne",
-      "rarity": "legendary",
-      "price": 20000,
-      "color": "#3a2d52",
-      "style": "throne",
-      "finish": "gem"
-    },
-    {
-      "id": "plat_throne",
-      "name": "Platinum Throne",
+      "id": "void",
+      "name": "Void Cookie",
       "rarity": "mythic",
-      "price": 40000,
-      "color": "#eef1f5",
-      "style": "throne",
-      "finish": "metal"
-    },
-    {
-      "id": "galaxy",
-      "name": "Galaxy Throne",
-      "rarity": "mythic",
-      "price": 60000,
-      "color": "#6a3dff",
-      "style": "throne",
-      "finish": "glow"
+      "price": 75000,
+      "style": "gems",
+      "dough": "#1a1030",
+      "toppings": [
+        "#b14dff",
+        "#ff4fd8",
+        "#5ff3ff"
+      ],
+      "glow": 0.9
     }
   ],
   "emotes": [
     {
       "id": "yum",
-      "label": "TICK TOCK",
-      "icon": "⏰",
+      "label": "YUMMY",
+      "icon": "😋",
       "price": 0
     },
     {
       "id": "ouch",
-      "label": "SO CLOSE",
+      "label": "OOPS",
       "icon": "😬",
       "price": 0
     },
@@ -485,6 +546,36 @@
       "price": 600
     },
     {
+      "id": "milk",
+      "label": "MILK TIME",
+      "icon": "🥛",
+      "price": 600
+    },
+    {
+      "id": "rematch",
+      "label": "REMATCH?",
+      "icon": "🔁",
+      "price": 600
+    },
+    {
+      "id": "genius",
+      "label": "GENIUS",
+      "icon": "🧠",
+      "price": 1200
+    },
+    {
+      "id": "easy",
+      "label": "TOO EASY",
+      "icon": "😎",
+      "price": 1200
+    },
+    {
+      "id": "crunchy",
+      "label": "CRUNCHY",
+      "icon": "🍪",
+      "price": 1200
+    },
+    {
       "id": "byebye",
       "label": "BYE BYE",
       "icon": "👋",
@@ -503,33 +594,9 @@
       "price": 3500
     },
     {
-      "id": "genius",
-      "label": "GENIUS",
-      "icon": "🧠",
-      "price": 1200
-    },
-    {
-      "id": "easy",
-      "label": "TOO EASY",
-      "icon": "😎",
-      "price": 1200
-    },
-    {
-      "id": "rematch",
-      "label": "REMATCH?",
-      "icon": "🔁",
-      "price": 600
-    },
-    {
-      "id": "crunchy",
-      "label": "PERFECT",
-      "icon": "🎯",
-      "price": 1200
-    },
-    {
       "id": "spicy",
-      "label": "TOO SLOW",
-      "icon": "🐢",
+      "label": "TOO SPICY",
+      "icon": "🌶️",
       "price": 3500
     }
   ],
@@ -558,7 +625,7 @@
   ],
   "starterPack": {
     "price": 1500,
-    "chair": "lava",
+    "cookie": "galaxy",
     "emotes": [
       "gg",
       "lol"
@@ -595,7 +662,7 @@
     },
     {
       "id": "flawless",
-      "label": "Win A Duel 2 - 0",
+      "label": "Win Without Losing A Heart",
       "event": "flawless",
       "goal": 1,
       "reward": 800
@@ -608,18 +675,18 @@
       "reward": 900
     },
     {
-      "id": "close5",
-      "label": "Stop Within 0.25s, 5 Times",
-      "event": "close",
-      "goal": 5,
+      "id": "milk10",
+      "label": "Dunk In The Milk 10 Times",
+      "event": "milk",
+      "goal": 10,
       "reward": 600
     },
     {
-      "id": "bullseye1",
-      "label": "Hit A Bullseye (±0.05s)",
-      "event": "bullseye",
-      "goal": 1,
-      "reward": 1000
+      "id": "poison5",
+      "label": "Poison Your Opponent 5 Times",
+      "event": "poisoned",
+      "goal": 5,
+      "reward": 700
     },
     {
       "id": "emote5",
@@ -703,7 +770,6 @@
     "5": 400,
     "10": 1000
   },
-  "lossReward": 25,
   "xp": {
     "win": 40,
     "loss": 15,
@@ -715,69 +781,73 @@
   "titles": [
     {
       "id": "t_rookie",
-      "name": "Clock Rookie",
+      "name": "Cookie Rookie",
       "color": "#c8d0dc",
       "level": 5
     },
     {
       "id": "t_ninja",
-      "name": "Tick Ninja",
+      "name": "Crumb Ninja",
       "color": "#5cff5c",
       "level": 10
     },
     {
       "id": "t_reader",
-      "name": "Time Reader",
+      "name": "Dunk Master",
       "color": "#4fd8ff",
       "level": 20
     },
     {
       "id": "t_master",
-      "name": "Time Master",
+      "name": "Milk Legend",
       "color": "#ffb21e",
       "level": 35
     },
     {
       "id": "t_legend",
-      "name": "Living Legend",
+      "name": "Cookie Overlord",
       "color": "#ff4fd8",
       "level": 50
     },
     {
       "id": "t_lucky",
-      "name": "Lucky Guess",
+      "name": "Lucky Dunker",
       "color": "#7dff3a",
       "price": 500,
       "rarity": "common"
     },
     {
       "id": "t_brain",
-      "name": "Second Hand",
+      "name": "Poison Chef",
       "color": "#ff7fc8",
       "price": 2000,
       "rarity": "uncommon"
     },
     {
       "id": "t_pro",
-      "name": "Steady Hands",
+      "name": "Steady Drop",
       "color": "#2f9bff",
       "price": 4000,
       "rarity": "rare"
     },
     {
       "id": "t_psychic",
-      "name": "Clock Psychic",
+      "name": "Cup Psychic",
       "color": "#b44dff",
       "price": 10000,
       "rarity": "epic"
     },
     {
       "id": "t_oracle",
-      "name": "Human Stopwatch",
+      "name": "Milk Oracle",
       "color": "#ffd23d",
       "price": 25000,
       "rarity": "legendary",
       "rainbow": true
     }
-  ]
+  ],
+  "afk": {
+    "warnSec": 70,
+    "kickSec": 90
+  }
 }

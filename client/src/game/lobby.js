@@ -4,8 +4,8 @@ import {
   DATA,
   FLOOR,
   GUIDE_BOARD,
-  HOURGLASS,
   LAMPS,
+  MILK_CARTON,
   PLANTERS,
   PLAZA,
   rotateXZ,
@@ -18,9 +18,9 @@ import {
 
 /**
  * The town square's build: the paving (one mesh) and every box-built prop (lamp
- * posts, string lights, crystal planters, the clock tower's body, the giant
- * hourglass, the Store and the guide board's frame), which join the world's shared
- * scenery instanced mesh: no draw calls of their own.
+ * posts, string lights, crystal planters, the milk glass's plinth, the giant milk
+ * carton, the Cookie Shop and the guide board's frame), which join the world's
+ * shared scenery instanced mesh: no draw calls of their own.
  */
 
 /** Polar -> [x, z] about (cx, cz), angles measured from +Z (south) towards +X (east). */
@@ -117,7 +117,7 @@ export function createPlazaGeometry(tile) {
   // Narrow enough that its corners stay on the round island.
   rect(0, -22.5, 34, 3.8, PAVE.boardPad)
   rect(GUIDE_BOARD.x, GUIDE_BOARD.z, 6.6, 2.6, PAVE.walk, GUIDE_BOARD.ry)
-  rect(HOURGLASS.x, HOURGLASS.z, 3.6, 3.6, PAVE.walk)
+  rect(MILK_CARTON.x, MILK_CARTON.z, 3.6, 3.6, PAVE.walk)
 
   // Layer 1: on the field, the tower's ring and the two avenues of tables.
   layer(1)
@@ -169,7 +169,6 @@ const LAMP_TOP = 3.98
 const ROPE_Y = 3.62
 const SAG = 0.5
 const GOLD = '#ffc93d'
-const BLUE = '#2f5bd8'
 const BRASS = '#e2ad45'
 
 /** Strings of little coloured bulbs hung between neighbouring lamp posts, sagging a little. */
@@ -239,71 +238,41 @@ function planterBoxes() {
 }
 
 /**
- * The clock tower's dimensions: a stepped base, a banded shaft, and the clock room
- * whose four faces (and hands, and roof) ClockTower.jsx draws.
+ * The giant glass of milk in the middle of the square: its plinth is boxes (here),
+ * the glass, the milk and the cookie dunked in it are drawn by MilkTower.jsx.
  */
-export const CLOCK = {
-  shaftTop: 7.35,
-  roomSize: 3.6,
-  roomHeight: 3.4,
-  /** Centre height of the clock faces. */
-  y: 7.35 + 1.7,
-  faceSize: 2.9,
-}
+export const MILK_GLASS = { radius: 1.9, height: 6.4, y0: 0.83, milk: 4.6 }
 
 function towerBoxes() {
   const { x, z } = TOWER
-  const half = CLOCK.roomSize / 2
-  const boxes = [
-    { p: [x, 0.2, z], s: [TOWER.size, 0.4, TOWER.size], c: '#a7aeb8' },
-    { p: [x, 0.575, z], s: [TOWER.size - 0.7, 0.35, TOWER.size - 0.7], c: GOLD },
-    { p: [x, 4.05, z], s: [3, 6.6, 3], c: '#fff1d6' },
-    { p: [x, CLOCK.y, z], s: [CLOCK.roomSize, CLOCK.roomHeight, CLOCK.roomSize], c: BLUE },
-    { p: [x, CLOCK.shaftTop, z], s: [CLOCK.roomSize + 0.3, 0.3, CLOCK.roomSize + 0.3], c: GOLD },
-    { p: [x, CLOCK.y + CLOCK.roomHeight / 2, z], s: [CLOCK.roomSize + 0.3, 0.3, CLOCK.roomSize + 0.3], c: GOLD },
+  return [
+    { p: [x, 0.2, z], s: [TOWER.size, 0.4, TOWER.size], c: '#f3d6b6' },
+    { p: [x, 0.575, z], s: [TOWER.size - 0.7, 0.35, TOWER.size - 0.7], c: '#ff8fb8' },
+    { p: [x, 0.785, z], s: [TOWER.size - 1.1, 0.07, TOWER.size - 1.1], c: '#ffffff' },
   ]
-  // Blue corner pillars and gold bands up the shaft.
-  for (const cx of [-1, 1]) {
-    for (const cz of [-1, 1]) boxes.push({ p: [x + cx * 1.4, 4.05, z + cz * 1.4], s: [0.5, 6.6, 0.5], c: BLUE })
-  }
-  for (const y of [2.5, 5]) boxes.push({ p: [x, y, z], s: [3.2, 0.25, 3.2], c: GOLD })
-  // Corner posts framing the clock faces.
-  for (const cx of [-1, 1]) {
-    for (const cz of [-1, 1]) {
-      boxes.push({ p: [x + cx * half, CLOCK.y, z + cz * half], s: [0.32, CLOCK.roomHeight, 0.32], c: GOLD })
-    }
-  }
-  // A door on the side facing the entrance.
-  boxes.push({ p: [x, 1.65, z + 1.52], s: [1.3, 2.1, 0.08], c: GOLD })
-  boxes.push({ p: [x, 1.6, z + 1.55], s: [1.05, 1.9, 0.08], c: '#5b3520' })
-  return boxes
 }
 
-/** A giant hourglass by the entrance: two heaps of sand tip to tip between wooden plates. */
-function hourglassBoxes() {
-  const { x, z } = HOURGLASS
-  const WOOD = '#8a4f2a'
-  const SAND = '#f3c75a'
-  const boxes = [
-    { p: [x, 0.15, z], s: [2.4, 0.3, 2.4], c: WOOD },
-    { p: [x, 0.36, z], s: [2.1, 0.12, 2.1], c: GOLD },
-    { p: [x, 4.05, z], s: [2.4, 0.3, 2.4], c: WOOD },
-    { p: [x, 3.84, z], s: [2.1, 0.12, 2.1], c: GOLD },
-    { p: [x, 2.1, z], s: [0.24, 0.5, 0.24], c: '#bfe9ff' },
+/** A giant carton of milk by the entrance, its top folded into a stepped gable. */
+function milkCartonBoxes() {
+  const { x, z } = MILK_CARTON
+  const WHITE = '#fbfcff'
+  const BLUE = '#4f8dff'
+  return [
+    { p: [x, 0.2, z], s: [2.3, 0.4, 2.3], c: '#3a6fd8' },
+    { p: [x, 1.9, z], s: [2, 3, 2], c: WHITE },
+    { p: [x, 2.35, z], s: [2.05, 0.9, 2.05], c: BLUE },
+    { p: [x, 2.35, z + 1.03], s: [1.2, 0.5, 0.02], c: WHITE },
+    { p: [x, 3.5, z], s: [1.96, 0.22, 1.6], c: WHITE },
+    { p: [x, 3.72, z], s: [1.96, 0.22, 1.05], c: WHITE },
+    { p: [x, 3.94, z], s: [1.96, 0.22, 0.5], c: WHITE },
+    { p: [x, 4.14, z], s: [2.1, 0.26, 0.14], c: BLUE },
   ]
-  for (const cx of [-1, 1]) {
-    for (const cz of [-1, 1]) boxes.push({ p: [x + cx * 1.0, 2.1, z + cz * 1.0], s: [0.2, 3.5, 0.2], c: WOOD })
-  }
-  // Most of the sand has run through: a big heap below, a little left above.
-  ;[[1.6, 0.6], [1.2, 0.95], [0.8, 1.28], [0.4, 1.58]].forEach(([w, y]) => boxes.push({ p: [x, y, z], s: [w, 0.34, w], c: SAND }))
-  ;[[0.45, 2.5], [0.8, 2.78], [1.1, 3.1]].forEach(([w, y]) => boxes.push({ p: [x, y, z], s: [w, 0.3, w], c: SAND }))
-  return boxes
 }
 
 /**
- * The Store: a booth on the west side, open towards the square, with a counter, a
- * till and shelves of little chair-coloured blocks. Its striped awning, sign and the
- * chair on its roof are drawn in Shops.jsx.
+ * The Cookie Shop: a booth on the west side, open towards the square, with a
+ * counter, a till and shelves of cookie tins. Its striped awning, sign and the
+ * cookie on its roof are drawn in Shops.jsx.
  */
 export const STORE_ROOF_Y = 4.08
 
@@ -323,8 +292,8 @@ function storeBoxes() {
     { p: at(1.2, 1.65, 2), s: [0.55, 0.36, 0.65], c: '#3c3f52' },
     { p: at(1.49, 1.72, 2), s: [0.04, 0.2, 0.44], c: '#5cff5c' },
   ]
-  // Two shelves on the back wall, stocked with blocks in the Store's chair colours.
-  const stock = DATA.chairs.filter((c) => !c.lobby && c.id !== 'basic').map((c) => c.color)
+  // Two shelves on the back wall, stocked with tins in the shop's cookie colours.
+  const stock = DATA.cookies.filter((c) => c.price > 0).map((c) => c.dough)
   for (const [k, y] of [1.35, 2.45].entries()) {
     boxes.push({ p: at(-1.55, y, 0), s: [0.55, 0.08, 7.2], c: '#5b3520' })
     for (let i = 0; i < 9; i += 1) {
@@ -367,7 +336,7 @@ export function lobbyBoxes() {
     ...STRINGS.rope,
     ...planterBoxes(),
     ...towerBoxes(),
-    ...hourglassBoxes(),
+    ...milkCartonBoxes(),
     ...storeBoxes(),
     ...guideFrameBoxes(),
   ]
@@ -376,10 +345,10 @@ export function lobbyBoxes() {
 /** Rug colours cycled down the avenues of tables. */
 export const RUG_COLORS = ['#e85d5d', '#f2a93b', '#4aa3df', '#9b6bd6', '#3cb878']
 
-/** A rug under each table and its two chairs, turned with it. */
+/** A rug under each table and the spots either side of it, turned with it. */
 export const RUG_ITEMS = DATA.tables.map((t, i) => ({
   p: [t.x, FLOOR.rug, t.z],
-  s: [TABLE.width + 1.4, 1, TABLE.depth + 2.2 * TABLE.seatZ],
+  s: [TABLE.width + 0.9, 1, TABLE.depth + 2 * TABLE.seatZ + 1],
   ry: t.ry,
   c: RUG_COLORS[i % RUG_COLORS.length],
 }))

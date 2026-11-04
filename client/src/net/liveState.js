@@ -47,14 +47,18 @@ export const bubbles = new Map()
 /** Virtual joystick + jump button, written by TouchControls. */
 export const touchInput = { x: 0, y: 0, jump: false }
 
-/** Requests for the particle system: { kind: 'confetti'|'sparks', x, y, z }. */
+/**
+ * Requests for the particle system:
+ * { kind: 'confetti' | 'sparks' | 'splash' | 'poison', x, y, z, color? }.
+ */
 export const effectQueue = []
 
 /**
- * Seated players' table actions, for their pose (see seatPose): id (SELF_ANCHOR for
- * the local player) -> epoch ms each started — `press` (stopping the clock), `zap`
- * (lost a round, with `side`, which way it jolts them), `fly` (ejected from the
- * chair, towards `ax`, `az`) and `danceAt` (when the winner may start dancing).
+ * Table actions of players at a table, for their pose (see seatPose): id
+ * (SELF_ANCHOR for the local player) -> epoch ms each started — `press` (dropping
+ * the cookie), `zap` (it landed in poison, with `side`, which way it jolts them),
+ * `fly` (lost the duel: launched away, towards `ax`, `az`) and `danceAt` (when the
+ * winner may start dancing).
  */
 export const actionFx = new Map()
 

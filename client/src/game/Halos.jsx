@@ -12,11 +12,12 @@ import {
 
 import { useGame } from '../net/gameStore'
 import { avatarAnchors, SELF_ANCHOR } from '../net/liveState'
-import { haloById, PLAYER_HEIGHT } from './layout'
+import { DATA, haloById, PLAYER_HEIGHT } from './layout'
 import { useDisposable } from './useDisposable'
 
 /** Room for every player in a full room. */
-const MAX_HALOS = 20
+/** Everyone in a full room, plus a bot at every table. */
+const MAX_HALOS = DATA.roomSize + DATA.tables.length
 /** Little gems orbiting each halo. */
 const GEMS = 3
 /** Legendary and mythic halos get a second, larger ring. */

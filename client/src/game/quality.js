@@ -6,8 +6,9 @@ import { usePlatform } from '../bloxity/platform'
  * Graphics presets. Every visual feature reads one of these values before it
  * renders anything; LOW is the floor for low-end phones.
  *
- * maxFullAvatars - remote players drawn as full skinned avatars (6+ draw calls
- *                  each); the rest become one instanced low-poly crowd.
+ * maxFullAvatars - remote players ON SCREEN drawn as their real avatar (one merged
+ *                  body + one draw call per accessory), nearest first, within
+ *                  fullAvatarDistance; the rest become one instanced crowd figure.
  */
 export const PRESETS = {
   low: {
@@ -15,11 +16,14 @@ export const PRESETS = {
     shadows: false,
     shadowMapSize: 0,
     particles: false,
-    maxFullAvatars: 3,
-    /** Name tags drawn at once (nearest players), and table signs (nearest tables). */
-    maxNames: 4,
+    maxFullAvatars: 10,
+    /** Draw calls the real avatars on screen may use together (body + each accessory). */
+    avatarDrawCalls: 24,
+    fullAvatarDistance: 45,
+    /** Name tags drawn at once (nearest players on screen), and table signs (nearest tables). */
+    maxNames: 6,
     maxTableSigns: 4,
-    nameDistance: 18,
+    nameDistance: 26,
     labelDistance: 22,
     viewDistance: 140,
     clouds: 12,
@@ -31,10 +35,12 @@ export const PRESETS = {
     shadows: true,
     shadowMapSize: 1024,
     particles: true,
-    maxFullAvatars: 6,
+    maxFullAvatars: 16,
+    avatarDrawCalls: 44,
+    fullAvatarDistance: 70,
     maxNames: 10,
     maxTableSigns: 6,
-    nameDistance: 28,
+    nameDistance: 34,
     labelDistance: 30,
     viewDistance: 260,
     clouds: 12,
@@ -46,10 +52,12 @@ export const PRESETS = {
     shadows: true,
     shadowMapSize: 2048,
     particles: true,
-    maxFullAvatars: 10,
+    maxFullAvatars: 30,
+    avatarDrawCalls: 60,
+    fullAvatarDistance: 110,
     maxNames: 16,
-    maxTableSigns: 10,
-    nameDistance: 40,
+    maxTableSigns: 8,
+    nameDistance: 50,
     labelDistance: 38,
     viewDistance: 420,
     clouds: 18,

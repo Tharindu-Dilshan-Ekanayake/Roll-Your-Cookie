@@ -1,11 +1,11 @@
 import { PerformanceMonitor } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { NearestFilter } from 'three'
+import { Frustum, Matrix4, NearestFilter } from 'three'
 
-import { useBloxity } from '../bloxity/BloxityContext'
 import { usePlatform } from '../bloxity/platform'
 import { renderStats } from '../net/liveState'
+import CookieInstances from './CookieInstances'
 import { CullingSystem } from './culling'
 import Effects from './Effects'
 import FollowCamera from './FollowCamera'
@@ -23,7 +23,7 @@ const CONTEXT_RESTORE_TIMEOUT_MS = 4000
 
 /**
  * Fires `onFirstFrame` after the renderer has actually drawn once.
- * `loadingEnd()` should mean "the player can see the game", not "React mounted".
+ * The loading screen should end on "the player can see the game", not "React mounted".
  */
 function FirstFrameSignal({ onFirstFrame }) {
   const fired = useRef(false)
@@ -53,16 +53,44 @@ function measureTextures(scene) {
 }
 
 /**
+ * Dev only: roughly what each draw call is, grouped by kind: every drawable that
+ * is visible (with all its ancestors) and on screen (or not frustum culled).
+ */
+function drawBreakdown(scene, camera) {
+  const frustum = new Frustum().setFromProjectionMatrix(
+    new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse),
+  )
+  const groups = {}
+  const shown = (o) => {
+    for (let p = o; p; p = p.parent) if (!p.visible) return false
+    return true
+  }
+  scene.traverse((o) => {
+    if (!(o.isMesh || o.isSprite || o.isPoints || o.isLine) || !shown(o)) return
+    if (o.isInstancedMesh && o.count === 0) return
+    if (o.frustumCulled && !o.isInstancedMesh && !frustum.intersectsObject(o)) return
+    const key = o.isSkinnedMesh ? 'avatar (skinned)' : o.isSprite ? 'label sprite' : o.isInstancedMesh ? `instanced ${o.geometry.type}` : `mesh ${o.geometry.type}`
+    groups[key] = (groups[key] || 0) + 1
+  })
+  return Object.entries(groups).sort((a, b) => b[1] - a[1])
+}
+
+/**
  * Copies renderer counters into liveState for the perf readout and automated checks,
  * and exposes `window.__textureMemory()` for on-demand texture budget checks.
  */
 function RenderStats() {
   const scene = useThree((s) => s.scene)
+  const camera = useThree((s) => s.camera)
   const frames = useRef({ count: 0, since: 0 })
   useEffect(() => {
     window.__textureMemory = () => measureTextures(scene)
-    return () => delete window.__textureMemory
-  }, [scene])
+    if (import.meta.env.DEV) window.__drawBreakdown = () => drawBreakdown(scene, camera)
+    return () => {
+      delete window.__textureMemory
+      delete window.__drawBreakdown
+    }
+  }, [scene, camera])
   useFrame(({ gl }) => {
     // Read before this frame renders: these are the previous frame's totals.
     renderStats.calls = gl.info.render.calls
@@ -149,43 +177,45 @@ function ViewDistance({ distance }) {
   return null
 }
 
-export function GameScene({ onReady }) {
-  const { game } = useBloxity()
+/**
+ * The 3D world. Everything in it (the island, all fifteen tables, the shops, the
+ * leaderboards, every cookie) mounts at once behind the loading screen and has its
+ * shaders compiled there (ShaderWarmup), so once the game shows nothing pops in and
+ * nothing stutters. `onReady` fires when the scene has drawn with the player's
+ * avatar in it and every shader is compiled; App lifts the loading screen once the
+ * game server has sent the player's profile too.
+ *
+ * @param {{ onReady?: () => void, onProgress?: (stage: string) => void }} props
+ */
+export function GameScene({ onReady, onProgress }) {
   // Bloxity ad break: stop simulating and rendering until it ends.
   const paused = usePlatform((s) => s.paused)
   const settings = useSettings()
   const drop = useQuality((s) => s.drop)
 
   const [avatarReady, setAvatarReady] = useState(false)
-  const loadingEnded = useRef(false)
+  const [warm, setWarm] = useState(false)
+  const [drawn, setDrawn] = useState(false)
+  const readied = useRef(false)
   const [contextLost, setContextLost] = useState(false)
-  // Scenery the player can't reach in their first seconds (shops, leaderboards,
-  // clouds) mounts just after the game is playable, hidden, compiles its shaders in
-  // the background, and only then appears: no loading delay and no stutter.
-  const [extras, setExtras] = useState('off')
-  const extrasReady = useCallback(() => setExtras('on'), [])
   const [canvasKey, setCanvasKey] = useState(0)
 
   const handleAvatarReady = useCallback(() => setAvatarReady(true), [])
-
-  const endLoading = useCallback(() => {
-    if (loadingEnded.current || !avatarReady) return
-    loadingEnded.current = true
-    game.loadingEnd()
-    game.gameplayStart()
-    onReady?.()
-    const reveal = () => setExtras('warming')
-    if (window.requestIdleCallback) window.requestIdleCallback(reveal, { timeout: 1000 })
-    else setTimeout(reveal, 100)
-  }, [avatarReady, game, onReady])
-
-  // The first frame usually renders before the avatar finishes downloading, so the
-  // frame callback alone isn't enough — close the loading screen here too.
-  useEffect(endLoading, [endLoading])
+  const handleWarm = useCallback(() => setWarm(true), [])
+  const handleFirstFrame = useCallback(() => setDrawn(true), [])
 
   useEffect(() => {
-    game.loadingStep('Preparing scene…')
-  }, [game])
+    if (avatarReady) onProgress?.('avatar')
+  }, [avatarReady, onProgress])
+  useEffect(() => {
+    if (warm) onProgress?.('shaders')
+  }, [warm, onProgress])
+
+  useEffect(() => {
+    if (readied.current || !avatarReady || !warm || !drawn) return
+    readied.current = true
+    onReady?.()
+  }, [avatarReady, warm, drawn, onReady])
 
   // If the browser doesn't hand the context back, remount the canvas from scratch.
   useEffect(() => {
@@ -230,29 +260,29 @@ export function GameScene({ onReady }) {
         <fog attach="fog" args={[FOG.color, settings.viewDistance * FOG.nearFraction, settings.viewDistance]} />
         <ViewDistance distance={settings.viewDistance} />
         <ResponsiveFov />
-        <Sky clouds={extras} />
+        <Sky clouds="on" />
         <Lighting />
 
         <Suspense fallback={null}>
-          <World extras={extras} />
+          <World />
           <Player onAvatarReady={handleAvatarReady} />
           <RemotePlayers />
         </Suspense>
+        <CookieInstances />
         <Halos />
 
         {settings.particles && <Effects />}
         <FollowCamera />
         <CullingSystem />
-        {extras === 'warming' && <ShaderWarmup onDone={extrasReady} />}
+        {/* After the avatar is in, so its shaders compile behind the loading screen too. */}
+        {avatarReady && !warm && <ShaderWarmup onDone={handleWarm} />}
         <RenderStats />
-        <FirstFrameSignal onFirstFrame={endLoading} />
+        <FirstFrameSignal onFirstFrame={handleFirstFrame} />
       </Canvas>
 
-      {contextLost && (
-        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-black/60">
-          <p className="font-game stroke-text text-3xl text-white">Recovering graphics…</p>
-        </div>
-      )}
+      {/* While the browser hands the graphics back (rare, mostly on phones), the
+          screen just dims for a moment: no message to read. */}
+      {contextLost && <div className="pointer-events-none absolute inset-0 z-50 bg-[#2b1a4d]/70" />}
     </>
   )
 }

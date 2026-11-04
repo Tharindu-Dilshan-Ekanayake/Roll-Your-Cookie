@@ -310,132 +310,180 @@ canvas {
   animation: slam 0.32s cubic-bezier(0.2, 1.3, 0.4, 1);
 }
 
-/* A seven-segment style stopwatch reading on a dark glass screen. */
-.lcd {
-  display: inline-block;
-  min-width: 6.2ch;
-  border: 3px solid #000;
-  border-radius: 0.6rem;
-  background: linear-gradient(180deg, #0c0c12, #1a1a24);
-  padding: 0.05em 0.3em;
-  font-family: ui-monospace, 'Consolas', 'Menlo', monospace;
-  font-size: 3.6rem;
-  font-weight: 800;
-  line-height: 1.05;
-  letter-spacing: 0.04em;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-  box-shadow: inset 0 0 0.6rem rgb(0 0 0 / 0.8);
-}
-.lcd-small {
-  min-width: 6.4ch;
-  font-size: 1.35rem;
-  border-width: 2px;
-  border-radius: 0.4rem;
-}
-.lcd-red {
-  color: #ff3a3a;
-  text-shadow: 0 0 0.35em rgb(255 40 40 / 0.85);
-}
-.lcd-amber {
-  color: #ffb21e;
-  text-shadow: 0 0 0.35em rgb(255 178 30 / 0.85);
-}
-.lcd-green {
-  color: #3dff6a;
-  text-shadow: 0 0 0.35em rgb(61 255 106 / 0.8);
-}
-.lcd-dim {
-  color: #8a2a2a;
-}
-@keyframes lcd-blind {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.55;
-  }
-}
-.lcd-blind {
-  color: #ff3a3a;
-  text-shadow: 0 0 0.35em rgb(255 40 40 / 0.85);
-  animation: lcd-blind 0.9s ease-in-out infinite;
-}
-@media (max-height: 520px) and (orientation: landscape) {
-  .lcd {
-    font-size: 2.4rem;
-  }
-  .lcd-small {
-    font-size: 1.1rem;
-  }
-}
-
-/* The target card / clock / reveal: under the duel bar. */
+/* What to do now (poison / aim / rolling): just under the duel bar, clear of the
+   launcher at the top of the board. */
 .timer-pos {
-  top: 17%;
+  top: max(13.5%, 5.9rem);
 }
+/* Tall screens have room above the board: below the Quit button, clear of it. */
 @media (orientation: portrait) {
   .timer-pos {
-    top: 15%;
+    top: max(22.5%, 11.6rem);
   }
 }
 @media (max-height: 520px) and (orientation: landscape) {
   .timer-pos {
-    top: 22%;
+    top: 5.4rem;
   }
 }
 
-/* The big round STOP button, bottom centre (clear of the emotes and Quit button). */
-.stop-pos {
-  bottom: max(1rem, 5%);
+/* The seven cup buttons and LOCK IN, along the bottom. */
+.cup-pos {
+  bottom: max(0.75rem, 3%);
 }
-.stop-button {
-  width: 7.5rem;
-  height: 7.5rem;
+.cup-btn {
+  height: 3.6rem;
+  border-radius: 0.7rem;
+  touch-action: manipulation;
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  .cup-btn {
+    height: 2.9rem;
+  }
+}
+.cup-milk {
+  background: linear-gradient(180deg, #ffffff, #d9ecff);
+}
+.cup-milk .stroke-thin {
+  color: #2d3a5c;
+  -webkit-text-stroke: 0;
+}
+.cup-poison {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--poison) 75%, white), var(--poison));
+  box-shadow:
+    0 0 0.9rem var(--poison),
+    inset 0 -0.32rem 0 rgb(0 0 0 / 0.24),
+    0 0.25rem 0 rgb(0 0 0 / 0.4);
+}
+@keyframes lock-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+.lock-pulse {
+  animation: lock-pulse 0.9s ease-in-out infinite;
+}
+
+/* Hearts on the duel cards: lost ones shrink and fade. */
+.heart {
+  display: inline-block;
+  font-size: 1.05rem;
+  line-height: 1;
+  transition:
+    transform 300ms ease,
+    opacity 300ms ease;
+}
+.heart-lost {
+  transform: scale(0.8);
+  opacity: 0.55;
+}
+.card-self {
+  border-color: #2a6bff;
+}
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-6px) rotate(-1deg);
+  }
+  40% {
+    transform: translateX(6px) rotate(1deg);
+  }
+  60% {
+    transform: translateX(-4px);
+  }
+  80% {
+    transform: translateX(4px);
+  }
+}
+.shake {
+  animation: shake 0.45s ease-in-out;
+}
+
+/* What a duelist is doing: a small chip under their card. */
+.chip {
+  white-space: nowrap;
+  border: 2px solid rgb(0 0 0 / 0.7);
+  border-radius: 9999px;
+  padding: 0 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.5;
+  color: white;
+}
+.chip-dark {
+  background: linear-gradient(180deg, #4b5368, #2a3040);
+}
+.chip-green {
+  background: linear-gradient(180deg, #5dff5d, #22a83a);
+}
+.chip-gold {
+  background: linear-gradient(180deg, #ffd23d, #f08a00);
+}
+
+/* The big round DROP button: under your right thumb on wide screens (clear of the
+   cups and the Quit button), bottom centre below the board on tall ones. */
+.drop-pos {
+  right: 4%;
+  bottom: 17%;
+}
+@media (orientation: portrait) {
+  .drop-pos {
+    right: auto;
+    left: 50%;
+    bottom: max(1.25rem, 4%);
+    transform: translateX(-50%);
+  }
+}
+.drop-button {
+  width: 8rem;
+  height: 8rem;
   box-shadow:
     inset 0 -0.5rem 0 rgb(0 0 0 / 0.3),
     0 0.4rem 0 rgb(0 0 0 / 0.45);
   touch-action: manipulation;
 }
 @media (max-height: 520px) and (orientation: landscape) {
-  .stop-button {
-    width: 5.6rem;
-    height: 5.6rem;
+  .drop-button {
+    width: 6rem;
+    height: 6rem;
   }
 }
-@keyframes stop-pulse {
+@keyframes drop-pulse {
   0%,
   100% {
     box-shadow:
       inset 0 -0.5rem 0 rgb(0 0 0 / 0.3),
       0 0.4rem 0 rgb(0 0 0 / 0.45),
-      0 0 0 0 rgb(255 60 60 / 0.6);
+      0 0 0 0 rgb(255 180 40 / 0.7);
   }
   50% {
     box-shadow:
       inset 0 -0.5rem 0 rgb(0 0 0 / 0.3),
       0 0.4rem 0 rgb(0 0 0 / 0.45),
-      0 0 0 0.6rem rgb(255 60 60 / 0);
+      0 0 0 0.7rem rgb(255 180 40 / 0);
   }
 }
-.stop-live {
-  background: radial-gradient(circle at 38% 30%, #ff9a9a 0 12%, #ff3a3a 40%, #c41212 100%);
-  animation: stop-pulse 1.2s ease-out infinite;
+.drop-live {
+  background: radial-gradient(circle at 38% 30%, #fff1a8 0 12%, #ffb21e 42%, #e2660b 100%);
+  animation: drop-pulse 1s ease-out infinite;
   cursor: pointer;
 }
-.stop-wait {
+.drop-done {
   background: radial-gradient(circle at 38% 30%, #c9c9c9 0 12%, #8a8f99 50%, #5b606b 100%);
 }
-.stop-done {
-  background: radial-gradient(circle at 38% 30%, #9be6ff 0 12%, #3aa0ff 45%, #1f5fc0 100%);
-}
-.stop-button:active:not(:disabled) {
+.drop-button:active:not(:disabled) {
   transform: translateY(4px) scale(0.95);
 }
 
-/* A soft glow round the screen's edges: a zap from your button (electric blue), a
-   bullseye (gold). The middle stays clear and it fades smoothly; no hard flash. */
+/* A soft glow round the screen's edges: poison (toxic green), a win (gold). The
+   middle stays clear and it fades smoothly; no hard flash. */
 @keyframes edge-glow {
   0% {
     opacity: 0;
@@ -447,17 +495,81 @@ canvas {
     opacity: 0;
   }
 }
-.flash-zap {
-  background: radial-gradient(ellipse at 50% 50%, transparent 52%, rgb(80 170 255 / 0.55) 100%);
-  animation: edge-glow 0.8s ease-out both;
+.flash-poison {
+  background: radial-gradient(ellipse at 50% 50%, transparent 50%, rgb(125 255 58 / 0.55) 100%);
+  animation: edge-glow 0.9s ease-out both;
 }
 .flash-golden {
   background: radial-gradient(ellipse at 50% 50%, transparent 55%, rgb(255 205 40 / 0.45) 100%);
   animation: edge-glow 0.9s ease-out both;
 }
+
+/* PLAY, bottom centre in the lobby: above the cash/wins on landscape phones, and
+   above the joystick and jump button on portrait ones. */
+.play-pos {
+  bottom: max(1.25rem, 4%);
+}
+@media (orientation: portrait) {
+  .play-pos {
+    bottom: calc(max(1rem, 6%) + 150px);
+  }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  .play-pos {
+    bottom: 3.6rem;
+  }
+}
+@keyframes play-pulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 -0.32rem 0 rgb(0 0 0 / 0.24),
+      0 0.25rem 0 rgb(0 0 0 / 0.4),
+      0 0 0 0 rgb(125 255 122 / 0.6);
+  }
+  50% {
+    box-shadow:
+      inset 0 -0.32rem 0 rgb(0 0 0 / 0.24),
+      0 0.25rem 0 rgb(0 0 0 / 0.4),
+      0 0 0 0.6rem rgb(125 255 122 / 0);
+  }
+}
+.play-pulse {
+  animation: play-pulse 1.4s ease-out infinite;
+}
+
+/* Loading screen: a sunset over the island, a bouncing, spinning cookie. */
+.loading-bg {
+  background:
+    radial-gradient(circle at 50% 38%, rgb(255 230 180 / 0.55), transparent 55%),
+    linear-gradient(180deg, #3d2c8d 0%, #8a4fb8 45%, #ffc29a 100%);
+}
+@keyframes cookie-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.cookie-spin {
+  animation: cookie-spin 6s linear infinite;
+}
+@keyframes cookie-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-0.9rem);
+  }
+}
+.cookie-bounce {
+  animation: cookie-bounce 1.1s ease-in-out infinite;
+}
 @media (prefers-reduced-motion: reduce) {
-  .lcd-blind,
-  .stop-live {
+  .drop-live,
+  .play-pulse,
+  .lock-pulse,
+  .cookie-spin,
+  .cookie-bounce {
     animation: none;
   }
 }
