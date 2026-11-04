@@ -1,5 +1,5 @@
 ---
-gameSlug: slap-chips
+gameSlug: roll-your-cookie
 clientDir: client
 buildCommand: npm ci && npm run build
 distDir: client/dist

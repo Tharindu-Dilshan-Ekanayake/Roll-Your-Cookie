@@ -1,6 +1,6 @@
 # Game server image for Bloxity hosting. Build from the repo root, since the server
 # reads ../shared/gameData.json:
-#   docker build -f server/Dockerfile -t slap-chips-server .
+#   docker build -f server/Dockerfile -t roll-your-cookie-server .
 FROM node:22-alpine
 
 WORKDIR /app/server
