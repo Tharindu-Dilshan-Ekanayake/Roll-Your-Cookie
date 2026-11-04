@@ -1,17 +1,14 @@
-import { DANCE_FORWARD, SEATED_BACK, SEATED_DROP, TABLE } from './layout'
+import { SEATED_BACK } from './layout'
 
-/** Seconds for the winner's jump from the chair up onto the table. */
-const CLIMB_S = 0.55
-const HOP_HEIGHT = 0.8
-/** Side-to-side wiggle of the whole body while dancing, in radians. */
+/** Hop height and side-to-side wiggle of the winner's dance, in units / radians. */
+const HOP_HEIGHT = 0.35
 const WIGGLE = 0.35
-/** Stopping the clock: the hand goes up and slams down on the button. */
+/** Dropping the cookie: the hand goes up and flicks it forward. */
 const PRESS_MS = 420
 
 /**
- * Losing a round: the button zaps its player, whose head spins right round (twice,
- * fast at first, slowing to a stop facing front again) while the body jolts aside
- * and eases back upright.
+ * Poisoned: the player's head spins right round (twice, fast at first, slowing to a
+ * stop facing front again) while the body jolts aside and eases back upright.
  */
 const HIT_MS = 800
 const HIT_PEAK = 0.12
@@ -20,9 +17,9 @@ const HIT_TURN = 0.35
 const HEAD_SPINS = 2
 
 /**
- * Losing the duel: the chair ejects its player, who flies off sideways and back,
- * spinning, lands flat on their back, bounces once and lies there until the server
- * sends them to the lobby.
+ * Losing the duel: the player is launched away from the table, spinning, lands
+ * flat on their back, bounces once and lies there until the server sends them to
+ * the lobby.
  */
 const FLY_MS = 820
 const FLY_DIST = 2.3
@@ -52,18 +49,15 @@ function hitEnvelope(t) {
 }
 
 /**
- * Ejected from the chair (`ms` since it fired): position, spin and tilt of the
- * avatar's group, flying from the seated pose to lying on the floor. Writes `out`.
+ * Launched after losing (`ms` since it fired): position, spin and tilt of the
+ * avatar's group, flying from standing at the table to lying on the floor. Writes `out`.
  */
 function flight(ms, fx, seat, out) {
   const t = Math.min(1, ms / FLY_MS)
-  // Off to one side and a little back from the table.
-  const ax = fx.ax
-  const az = fx.az
   const d = FLY_DIST * easeOutCubic(t)
-  out.x = -Math.sin(seat.ry) * SEATED_BACK + ax * d
-  out.z = -Math.cos(seat.ry) * SEATED_BACK + az * d
-  out.y = SEATED_DROP + (LIE_Y - SEATED_DROP) * t + FLY_HEIGHT * 4 * t * (1 - t)
+  out.x = -Math.sin(seat.ry) * SEATED_BACK + fx.ax * d
+  out.z = -Math.cos(seat.ry) * SEATED_BACK + fx.az * d
+  out.y = LIE_Y * t + FLY_HEIGHT * 4 * t * (1 - t)
   if (t >= 1) {
     const b = (ms - FLY_MS) / BOUNCE_MS
     if (b < 1) out.y += BOUNCE * Math.sin(b * Math.PI)
@@ -77,15 +71,15 @@ function flight(ms, fx, seat, out) {
 const _flight = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, landed: false }
 
 /**
- * Poses a player who is at a table: sitting, or, for a duel's winner
- * (`seat.dancing`), jumping up onto the table and dancing on it until the result
+ * Poses a player who is at a table: standing at their spot facing the board, or,
+ * for a duel's winner (`seat.dancing`), dancing on the spot until the result
  * clears. Shared by the local player and remote players so both look identical.
  *
- * Seated players also act out the duel, from liveState.actionFx (epoch ms):
- *   `press`   - stopping the clock: the hand slams the button
- *   `zap`     - lost a round: a jolt from the button (`side`: which way it knocks them)
- *   `fly`     - lost the duel: ejected from the chair (`ax`, `az`: which way)
- *   `danceAt` - the winner waits until then to climb up and dance
+ * Players at a table also act out the duel, from liveState.actionFx (epoch ms):
+ *   `press`   - dropping the cookie: the hand flicks it onto the board
+ *   `zap`     - landed in poison: a jolt and a head spin (`side`: which way)
+ *   `fly`     - lost the duel: launched away from the table (`ax`, `az`: which way)
+ *   `danceAt` - the winner waits until then to start dancing
  *
  * @param {import('three').Object3D} visual the avatar's group (feet at its origin)
  * @param {import('three').Object3D|null} tag the name tag's group, lifted with them
@@ -96,14 +90,13 @@ const _flight = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, landed: false }
  */
 export function poseAtSeat(visual, tag, seat, motion, delta, fx) {
   motion.speed = 0
-  // Pitch and roll in the avatar's own frame, then the yaw: leaning back and
-  // tilting sideways work the same at every table.
+  // Pitch and roll in the avatar's own frame, then the yaw: leaning and tilting
+  // work the same at every table.
   if (visual.rotation.order !== 'YXZ') visual.rotation.order = 'YXZ'
-  // The way the seated player faces (towards the table).
   const fx0 = Math.sin(seat.ry)
   const fz0 = Math.cos(seat.ry)
   const now = Date.now()
-  // The winner climbs up once the loser's ejection has had its moment.
+  // The winner starts dancing once the loser's launch has had its moment.
   const dancing = seat.dancing && now >= (fx?.danceAt || 0)
 
   if (!dancing) {
@@ -117,17 +110,17 @@ export function poseAtSeat(visual, tag, seat, motion, delta, fx) {
     motion.down = false
 
     let x = -fx0 * SEATED_BACK
-    let y = SEATED_DROP
+    let y = 0
     let z = -fz0 * SEATED_BACK
     let yaw = seat.ry
     let pitch = 0
     let roll = 0
 
-    // Hand up, then down hard on the button, with a little lean into it.
+    // Hand up, then a flick forward over the board, with a little lean into it.
     motion.press = press < 0 ? 0 : press < 0.45 ? smooth(press / 0.45) : 1 - smooth((press - 0.45) / 0.55) * 1.15
-    pitch += Math.max(0, motion.press) * 0.06
+    pitch += Math.max(0, motion.press) * 0.08
 
-    // Zapped: the head spins round, the body is knocked away then back upright.
+    // Poisoned: the head spins round, the body is knocked away then back upright.
     const k = hit < 0 ? 0 : hitEnvelope(hit)
     motion.zap = k
     motion.headSpin = hit < 0 ? 0 : (fx.side || 1) * Math.PI * 2 * HEAD_SPINS * easeOutCubic(hit)
@@ -136,7 +129,7 @@ export function poseAtSeat(visual, tag, seat, motion, delta, fx) {
       yaw -= fx.side * HIT_TURN * k
     }
 
-    // Ejected: out of the chair, through the air and flat on the floor.
+    // Lost: off the floor, through the air and flat on their back.
     if (flying >= 0) {
       flight(flying, fx, seat, _flight)
       x = _flight.x
@@ -165,22 +158,17 @@ export function poseAtSeat(visual, tag, seat, motion, delta, fx) {
   motion.headSpin = 0
   motion.down = false
   motion.danceT = (motion.danceT ?? 0) + delta
-  const t = Math.min(1, motion.danceT / CLIMB_S)
-  const landed = t >= 1
-  const y = TABLE.height * t + Math.sin(t * Math.PI) * HOP_HEIGHT
-  // Forward onto the table, in the direction the seat faces.
-  const forward = DANCE_FORWARD * t
-
   motion.seated = false
-  // Mid-hop the rig uses its airborne tuck, then breaks into the dance.
-  motion.grounded = landed
-  motion.dancing = landed
-  visual.position.set(fx0 * forward, y, fz0 * forward)
-  visual.rotation.set(0, seat.ry + (landed ? Math.sin(motion.time * 4) * WIGGLE : 0), 0)
-  if (tag) tag.position.set(fx0 * forward, y, fz0 * forward)
+  motion.grounded = true
+  motion.dancing = true
+  // Bouncing on the spot, wiggling, still facing the board.
+  const hop = Math.abs(Math.sin(motion.danceT * 4)) * HOP_HEIGHT
+  visual.position.set(-fx0 * SEATED_BACK, hop, -fz0 * SEATED_BACK)
+  visual.rotation.set(0, seat.ry + Math.sin(motion.time * 4) * WIGGLE, 0)
+  if (tag) tag.position.set(0, hop, 0)
 }
 
-/** Back to a normal standing pose after leaving the seat. */
+/** Back to a normal standing pose after leaving the table. */
 export function clearSeatPose(visual, tag, motion) {
   motion.seated = false
   motion.dancing = false

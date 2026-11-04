@@ -132,7 +132,7 @@ export function Player({ onAvatarReady }) {
     motion.time += delta
 
 
-    // --- At a table: pinned to the chair (or dancing on it after a win) ----------
+    // --- At a table: pinned to their spot (or dancing there after a win) ----------
     const seat = localPlayer.seat
     if (seat) {
       pos.set(seat.x, 0, seat.z)

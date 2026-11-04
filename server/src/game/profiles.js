@@ -16,6 +16,20 @@ const LEADERBOARD_REFRESH_MS = 15000
 
 const DEFAULT_EMOTES = DATA.emotes.filter((e) => e.price === 0).map((e) => e.id)
 
+/**
+ * What every chair cost before cookies replaced them: saves that still own chairs
+ * get that cash back, once (see normalise). The Starter Pack's chair (lava) isn't
+ * refunded to pack owners: they get the new pack's cookie instead.
+ */
+const OLD_CHAIR_PRICES = {
+  metal: 100, picnic: 300, nature: 800, candy: 1200, storm: 2000, ocean: 3000, lava: 5000,
+  golden: 9000, void: 16000, diamond: 30000, oak: 250, bamboo: 450, bronze: 1000,
+  silver: 2500, snow: 3500, neon: 4000, gold: 6500, emerald: 7500, ruby: 8000,
+  frost: 12000, sapphire: 13000, platinum: 15000, obsidian: 20000, plat_throne: 40000,
+  galaxy: 60000,
+}
+const PACK_CHAIR = 'lava'
+
 const store = createStore(boxity.mongoUri)
 
 /** Profiles held in memory: everyone connected (plus, for the file store, everyone). */
@@ -42,8 +56,9 @@ function createProfile(id, name) {
     wins: 0,
     streak: 0,
     bestStreak: 0,
-    ownedChairs: ['basic'],
-    equippedChair: 'basic',
+    /** Cookies bought in the shop, and the one rolled in duels. */
+    ownedCookies: ['classic'],
+    equippedCookie: 'classic',
     ownedEmotes: [...DEFAULT_EMOTES],
     /** Head auras bought in the shop, and the one worn ('' = none). */
     ownedHalos: [],
@@ -58,6 +73,8 @@ function createProfile(id, name) {
     equippedTitle: '',
     passes: [],
     starterPack: false,
+    /** Cash refunded for chairs from before cookies, not yet announced (see GameRoom.onJoin). */
+    chairRefund: 0,
     quests: { day: '', progress: {}, claimed: {} },
     daily: { lastDay: '', streak: 0 },
     /** Seconds of play banked toward the next mystery gift. */
@@ -72,7 +89,24 @@ function normalise(raw) {
   const { _id, ...rest } = raw
   const p = { ...createProfile(rest.id || _id, rest.name || 'Player'), ...rest }
   for (const id of DEFAULT_EMOTES) if (!p.ownedEmotes.includes(id)) p.ownedEmotes.push(id)
-  if (!p.ownedChairs.includes('basic')) p.ownedChairs.unshift('basic')
+  if (!Array.isArray(p.ownedCookies)) p.ownedCookies = []
+  if (!p.ownedCookies.includes('classic')) p.ownedCookies.unshift('classic')
+  // Saves from before cookies replaced chairs: every bought chair is refunded in
+  // cash, and Starter Pack owners get the new pack's cookie.
+  if (Array.isArray(p.ownedChairs)) {
+    let refund = 0
+    for (const id of p.ownedChairs) {
+      if (p.starterPack && id === PACK_CHAIR) continue
+      refund += OLD_CHAIR_PRICES[id] || 0
+    }
+    p.cash += refund
+    p.chairRefund = (p.chairRefund || 0) + refund
+    if (p.starterPack && !p.ownedCookies.includes(DATA.starterPack.cookie)) p.ownedCookies.push(DATA.starterPack.cookie)
+  }
+  delete p.ownedChairs
+  delete p.equippedChair
+  p.ownedCookies = p.ownedCookies.filter((id) => DATA.cookies.some((c) => c.id === id))
+  if (!p.ownedCookies.includes(p.equippedCookie)) p.equippedCookie = 'classic'
   for (const t of DATA.titles) {
     if (t.level && t.level <= p.level && !p.ownedTitles.includes(t.id)) p.ownedTitles.push(t.id)
   }
@@ -100,7 +134,7 @@ function markDirty(p) {
 }
 
 /** A profile with no progress worth keeping. */
-const isFresh = (p) => p.wins === 0 && p.cash === 0 && p.ownedChairs.length === 1 && p.passes.length === 0
+const isFresh = (p) => p.wins === 0 && p.cash === 0 && p.ownedCookies.length === 1 && p.passes.length === 0
 
 /**
  * Loads (or creates) a profile and keeps it in memory while its player is here.
@@ -230,7 +264,7 @@ function todaysQuests(now) {
 }
 
 /**
- * Records a gameplay event ('play', 'win', 'flawless', 'streak3', 'close', 'bullseye',
+ * Records a gameplay event ('play', 'win', 'flawless', 'streak3', 'milk', 'poisoned',
  * 'emote').
  */
 function addQuestEvent(p, event, amount = 1, now = Date.now()) {
@@ -264,8 +298,8 @@ function view(p, { now = Date.now(), giftReadyAt = now } = {}) {
     wins: p.wins,
     streak: p.streak,
     bestStreak: p.bestStreak,
-    ownedChairs: p.ownedChairs,
-    equippedChair: p.equippedChair,
+    ownedCookies: p.ownedCookies,
+    equippedCookie: p.equippedCookie,
     ownedEmotes: p.ownedEmotes,
     ownedHalos: p.ownedHalos,
     equippedHalo: p.equippedHalo,

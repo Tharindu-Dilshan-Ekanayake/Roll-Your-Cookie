@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 
 import { sfx } from '../audio/sfx'
-import { DATA, finishOf, RARITY_COLORS } from '../game/layout'
+import { COOKIE_STYLES, cookieById, DATA, RARITY_COLORS } from '../game/layout'
 import { usePlatform } from '../bloxity/platform'
 import { useQuality } from '../game/quality'
 import { GRAPHICS, setCameraSpeed, setGraphics, setMusicVolume, setShowFps, setVolume } from '../game/userSettings'
 import { useGame } from '../net/gameStore'
 import { send } from '../net/api'
-import ChairIcon from './ChairIcon'
+import CookieIcon from './CookieIcon'
 import { clock, money, useNow } from './format'
 
 /** The chunky teal-framed window used by every menu, with the red X. */
@@ -100,27 +100,26 @@ const buy = (kind, id) => {
 
 const equip = (id) => {
   sfx.click()
-  send({ t: 'equip', id })
+  send({ t: 'equip', kind: 'cookie', id })
 }
 
-const CHAIR_FILTERS = [
+const COOKIE_FILTERS = [
   ['all', 'All'],
   ['showroom', '📍 Showroom'],
-  ['store', '🛒 Store only'],
+  ['store', '🛒 Shop only'],
   ['owned', '🎒 Owned'],
 ]
 
-/** Cheapest first; the free starter chair leads. */
-const CHAIRS_BY_PRICE = [...DATA.chairs].sort((a, b) => a.price - b.price)
+/** Cheapest first; the free starter cookie leads. */
+const COOKIES_BY_PRICE = [...DATA.cookies].sort((a, b) => a.price - b.price)
 
-/** One chair for sale: its picture, name, rarity and finish, and buy / equip. */
-function ChairCard({ chair, profile }) {
-  const owned = profile.ownedChairs.includes(chair.id)
-  const equipped = profile.equippedChair === chair.id
-  const color = RARITY_COLORS[chair.rarity]
-  const tags = [finishOf(chair).label]
-  if (chair.style === 'throne') tags.push('Throne')
-  if (chair.style === 'snow') tags.push('Snowy')
+/** One cookie for sale: its picture, name, rarity and style, and buy / equip. */
+function CookieCard({ cookie, profile }) {
+  const owned = profile.ownedCookies.includes(cookie.id)
+  const equipped = profile.equippedCookie === cookie.id
+  const color = RARITY_COLORS[cookie.rarity]
+  const tags = [COOKIE_STYLES[cookie.style] || 'Cookie']
+  if (cookie.glow) tags.push('Glows')
   return (
     <div
       className="relative flex flex-col items-center gap-1 overflow-hidden rounded-xl border-[3px] p-2 pt-1.5"
@@ -129,7 +128,7 @@ function ChairCard({ chair, profile }) {
         background: `radial-gradient(circle at 50% 32%, ${color}55, #123540 70%)`,
       }}
     >
-      {chair.lobby && (
+      {cookie.lobby && (
         <span className="absolute left-1 top-1 rounded bg-black/45 px-1 text-[0.6rem] font-bold text-white" title="Also on show in the lobby">
           📍
         </span>
@@ -138,21 +137,21 @@ function ChairCard({ chair, profile }) {
         className="stroke-thin absolute right-1 top-1 rounded px-1 py-0.5 text-[0.55rem] font-bold uppercase text-white"
         style={{ background: color }}
       >
-        {chair.rarity}
+        {cookie.rarity}
       </span>
-      <ChairIcon chair={chair} className="mt-2 size-[4.6rem]" />
-      <div className="stroke-text w-full truncate text-center text-base font-bold leading-tight text-white">{chair.name}</div>
+      <CookieIcon cookie={cookie} className={`mt-2 size-[4.6rem] ${equipped ? 'cookie-spin' : ''}`} />
+      <div className="stroke-text w-full truncate text-center text-base font-bold leading-tight text-white">{cookie.name}</div>
       <div className="w-full truncate text-center text-[0.7rem] font-bold text-white/75">{tags.join(' · ')}</div>
       <div className="mt-auto w-full">
         {equipped ? (
           <ActionButton label="EQUIPPED" variant="owned" disabled wide />
         ) : owned ? (
-          <ActionButton label="EQUIP" variant="equip" onClick={() => equip(chair.id)} wide />
+          <ActionButton label="EQUIP" variant="equip" onClick={() => equip(cookie.id)} wide />
         ) : (
           <ActionButton
-            label={money(chair.price)}
-            variant={profile.cash >= chair.price ? 'buy' : 'locked'}
-            onClick={() => buy('chair', chair.id)}
+            label={money(cookie.price)}
+            variant={profile.cash >= cookie.price ? 'buy' : 'locked'}
+            onClick={() => buy('cookie', cookie.id)}
             wide
           />
         )}
@@ -162,15 +161,15 @@ function ChairCard({ chair, profile }) {
 }
 
 /**
- * Every chair as a grid of cards, with filters: the ones on show in the lobby's
- * showroom, the ones sold only here in the Store, and the ones you own.
+ * Every cookie as a grid of cards, with filters: the ones on show in the lobby's
+ * showroom, the ones sold only here in the shop, and the ones you own.
  */
-function ChairGrid({ profile, ownedOnly = false }) {
+function CookieGrid({ profile, ownedOnly = false }) {
   const [filter, setFilter] = useState('all')
-  const shown = CHAIRS_BY_PRICE.filter((c) => {
-    if (ownedOnly || filter === 'owned') return profile.ownedChairs.includes(c.id)
+  const shown = COOKIES_BY_PRICE.filter((c) => {
+    if (ownedOnly || filter === 'owned') return profile.ownedCookies.includes(c.id)
     if (filter === 'showroom') return c.lobby
-    // The free starter chair isn't for sale anywhere.
+    // The free starter cookie isn't for sale anywhere.
     if (filter === 'store') return !c.lobby && c.price > 0
     return true
   })
@@ -179,10 +178,10 @@ function ChairGrid({ profile, ownedOnly = false }) {
       {!ownedOnly && (
         <div className="flex shrink-0 flex-col gap-1.5">
           <div className="stroke-thin text-center text-sm font-bold text-white/90">
-            🪑 {profile.ownedChairs.length}/{DATA.chairs.length} chairs owned · 📍 = also in the lobby showroom
+            🍪 {profile.ownedCookies.length}/{DATA.cookies.length} cookies owned · the one you equip is the one you roll!
           </div>
           <div className="grid grid-cols-4 gap-1.5">
-            {CHAIR_FILTERS.map(([id, label]) => (
+            {COOKIE_FILTERS.map(([id, label]) => (
               <button
                 key={id}
                 type="button"
@@ -202,7 +201,7 @@ function ChairGrid({ profile, ownedOnly = false }) {
       )}
       <div className="grid shrink-0 grid-cols-2 gap-2 sm:grid-cols-3">
         {shown.map((c) => (
-          <ChairCard key={c.id} chair={c} profile={profile} />
+          <CookieCard key={c.id} cookie={c} profile={profile} />
         ))}
       </div>
     </>
@@ -315,14 +314,14 @@ function TitleRows({ profile, ownedOnly = false }) {
 
 function PassRows({ profile }) {
   const pack = DATA.starterPack
-  const packChair = DATA.chairs.find((c) => c.id === pack.chair)
+  const packCookie = cookieById(pack.cookie)
   return (
     <>
       <Row
-        icon={<span className="text-[2.4rem]">⭐</span>}
+        icon={<CookieIcon cookie={packCookie} className="size-12 shrink-0" />}
         title="STARTER PACK"
         titleClass="text-[#ffe23d]"
-        sub={`${packChair.name} + ${pack.emotes.length} emotes`}
+        sub={`${packCookie.name} (worth ${money(packCookie.price)}) + ${pack.emotes.length} emotes`}
         action={
           profile.starterPack ? (
             <ActionButton label="OWNED" variant="owned" disabled />
@@ -351,7 +350,7 @@ function PassRows({ profile }) {
 }
 
 const SHOP_TABS = [
-  ['chairs', 'Chairs 🪑'],
+  ['cookies', 'Cookies 🍪'],
   ['auras', 'Auras ✨'],
   ['titles', 'Titles 🏷️'],
   ['emotes', 'Emotes 😄'],
@@ -381,8 +380,8 @@ function ShopModal({ profile }) {
     </div>
   )
   return (
-    <Frame title="Store 🛒" tabs={tabs}>
-      {tab === 'chairs' && <ChairGrid profile={profile} />}
+    <Frame title="Cookie Shop 🛒" tabs={tabs}>
+      {tab === 'cookies' && <CookieGrid profile={profile} />}
       {tab === 'auras' && <HaloRows profile={profile} />}
       {tab === 'titles' && <TitleRows profile={profile} />}
       {tab === 'emotes' && <EmoteRows profile={profile} />}
@@ -394,8 +393,8 @@ function ShopModal({ profile }) {
 function ItemsModal({ profile }) {
   return (
     <Frame title="Items 🎒">
-      <h3 className="stroke-text text-xl font-bold text-white">Chairs</h3>
-      <ChairGrid profile={profile} ownedOnly />
+      <h3 className="stroke-text text-xl font-bold text-white">Cookies</h3>
+      <CookieGrid profile={profile} ownedOnly />
       {(profile.ownedHalos || []).length > 0 && (
         <>
           <h3 className="stroke-text mt-2 text-xl font-bold text-white">Auras</h3>
@@ -615,24 +614,23 @@ function QuestsModal({ profile }) {
 }
 
 const HELP_STEPS = [
-  ['🚶', 'Walk to a table', 'Use WASD (or the joystick on phones). Walk up to a table and press E (or tap "Play"). When someone sits across from you, the duel starts.'],
-  ['🎯', 'Read the target', 'Every round shows a TARGET time in seconds and milliseconds, like 07.384. Your job: stop your clock as close to it as you can.'],
-  ['👀', 'Then it goes blind', 'The clock starts at 00.000 and you can watch it for a few seconds (less every round). Then it hides and shows ??.??? — count in your head!'],
-  ['✋', 'Hit STOP', 'Press the big STOP button, SPACE, or tap your button on the table when you think the clock has reached the target.'],
-  ['🏆', 'Closest wins', `Whoever stops closer to the target wins the round. First to ${DATA.timer.winsNeeded} rounds wins the duel and $${DATA.winReward}; even if you lose, you get $${DATA.lossReward} and XP for playing.`],
-  ['🚀', 'Losers get ejected!', 'Lose the duel and your chair launches you out of your seat, while the winner dances on the table.'],
-  ['🎯', 'Bullseye bonus', `Stop within ±${(DATA.timer.bullseyeMs / 1000).toFixed(2)}s of the target for a $${DATA.timer.bullseyeCash} bonus.`],
-  ['🏃', 'No quitting!', `Quit a duel and it counts as a loss: you pay $${DATA.forfeit.penalty} to your opponent.`],
-  ['🪑', 'Collect chairs', 'Walk up to the chairs in the showroom to buy them, or open the 🛒 STORE for many more: Wood, Silver, Gold, Platinum, Snow, Gems, Neon and royal Thrones!'],
+  ['🚶', 'Find a table', `Tap the big PLAY button, or walk up to a table (WASD or the joystick on phones) and press E. When someone stands opposite you, the duel starts. Nobody coming? While you wait at the table, tap 🤖 PLAY VS BOT (bots play only while the lobby has ${DATA.bot.maxLobbyPlayers} players or fewer).`],
+  ['☠️', 'Poison some cups', `Every round you secretly poison ${DATA.duel.poisons[0]} of the 7 cups (more each round): tap the cups or the buttons. Your opponent does the same to you. Only you can see your own poison!`],
+  ['🍪', 'Drop your cookie', 'On your turn your cookie slides along the top of the board. Tap DROP (or press SPACE) to let go. It rolls and bounces down through the pegs into a cup.'],
+  ['🥛', 'Milk or poison?', `Milk is safe, and pays +$${DATA.duel.milkBonus}. Land in a cup your opponent poisoned and you lose a ❤️. Where you let go matters, but every peg can surprise you!`],
+  ['🏆', 'Last cookie standing', `Everyone starts with ${DATA.duel.hearts} ❤️. Run out and you lose. The winner gets $${DATA.winReward}; even if you lose, you get $${DATA.lossReward} and XP for playing.`],
+  ['😈', 'Outsmart them', 'Watch where they drop and guess where they will aim next round. The end cups and the middle catch the most cookies…'],
+  ['🏃', 'No quitting!', `Quit a duel against a player and it counts as a loss: you pay $${DATA.forfeit.penalty} to your opponent.`],
+  ['🍪', 'Collect cookies', 'The cookie you equip is the one you roll! Buy them in the showroom or open the 🛒 SHOP: Sprinkles, Macarons, Galaxy Gems, Molten Lava, Golden Crunch and more.'],
   ['⭐', 'Level up', 'Every duel gives XP. Each new level pays cash, and some unlock cool titles for your name.'],
   ['📜', 'Quests & gifts', 'Finish 3 daily quests, open a free gift every 10 minutes, and claim your daily reward.'],
-  ['🔥', 'Win streaks', 'Win in a row for bonus cash at 3, 5 and 10 wins. Get on the leaderboards!'],
+  ['🔥', 'Win streaks', 'Beat other players in a row for bonus cash at 3, 5 and 10 wins. Get on the leaderboards!'],
 ]
 
 /** "How to play" in plain English. Opens by itself on a player's first visit. */
 function HelpModal() {
   return (
-    <Frame title="How to Play ⏱️">
+    <Frame title="How to Play 🍪">
       {HELP_STEPS.map(([icon, title, text], i) => (
         <div key={title} className="flex items-start gap-3 rounded-xl border-[3px] border-black/50 bg-[#123540] px-3 py-2">
           <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-white/10 text-[1.8rem]">{icon}</span>

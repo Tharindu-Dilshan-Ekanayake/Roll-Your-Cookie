@@ -20,18 +20,3 @@ export function useNow(intervalMs = 1000) {
   }, [intervalMs])
   return now
 }
-
-/** A stopwatch reading in seconds and milliseconds, "SS.mmm" (capped at 99.999). */
-export function stopwatch(ms) {
-  const t = Math.min(99999, Math.max(0, Math.floor(ms)))
-  return `${String(Math.floor(t / 1000)).padStart(2, '0')}.${String(t % 1000).padStart(3, '0')}`
-}
-
-/** What a stopwatch shows instead of a time: "??.???" while blind, "--.---" for none. */
-export const BLIND_READING = '??.???'
-export const NO_READING = '--.---'
-
-/** How far a stop was from its target, "+0.123s" / "−0.407s". */
-export function offBy(ms) {
-  return `${ms >= 0 ? '+' : '−'}${(Math.abs(ms) / 1000).toFixed(3)}s`
-}

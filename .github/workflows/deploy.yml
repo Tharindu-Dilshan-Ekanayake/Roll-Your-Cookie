@@ -109,7 +109,7 @@ jobs:
         run: |
           # roomSize, not seatCap: Bloxity decides how many players each pod gets.
           body=$(jq -n --arg channel "$CHANNEL" --arg image "${{ steps.image.outputs.ref }}" \
-            --arg version "${{ github.sha }}" '{channel: $channel, image: $image, version: $version, roomSize: 20}')
+            --arg version "${{ github.sha }}" '{channel: $channel, image: $image, version: $version, roomSize: 30}')
           curl -sf -X POST "$LEGION_URL/v1/apps/$GAME_ID/deploy" \
             -H "Authorization: Bearer $DEPLOY_TOKEN" -H 'Content-Type: application/json' -d "$body"
 

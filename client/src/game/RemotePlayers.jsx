@@ -4,10 +4,14 @@ import {
   BufferAttribute,
   CanvasTexture,
   Color,
+  Frustum,
+  Matrix4,
   MeshBasicMaterial,
   MeshLambertMaterial,
   Object3D,
   PlaneGeometry,
+  Sphere,
+  Vector3,
 } from 'three'
 
 import { DEFAULT_PROPORTIONS } from '../bloxity/store'
@@ -15,7 +19,7 @@ import { useGame } from '../net/gameStore'
 import { actionFx, avatarAnchors, localPlayer, remoteEmotes, remotes, remoteSeats } from '../net/liveState'
 import { mergedBoxes } from './instancing'
 import Nametag from './Nametag'
-import { FLOOR, PLAYER_HEIGHT } from './layout'
+import { DATA, FLOOR, PLAYER_HEIGHT } from './layout'
 import PlayerAvatar from './PlayerAvatar'
 import { getSettings } from './quality'
 import { skipWhenHidden } from './sceneGraph'
@@ -24,12 +28,37 @@ import { useDisposable } from './useDisposable'
 
 /** One snapshot interval: interpolation always runs one packet behind. */
 const INTERP_S = 0.1
-const MAX_PLAYERS = 20
+/** Everyone in a full room, plus a bot at every table. */
+const MAX_PLAYERS = DATA.roomSize + DATA.tables.length
 
-/** id -> { group, visual, full, active, isFull, dist } */
+/** id -> { group, visual, full, active, isFull, dist, inView } */
 const registry = new Map()
+/** The same entries as a plain array, so the frame loop iterates without allocating. */
+const entries = []
 const ordered = []
-const byDistance = (a, b) => a.dist - b.dist
+/** On screen first, then nearest first. */
+const byViewThenDistance = (a, b) => b.inView - a.inView || a.dist - b.dist
+
+/** How many draw calls an avatar costs: its visible meshes (body + accessories). */
+let _meshes = 0
+const countMesh = (o) => {
+  if (o.isMesh && o.visible) _meshes += 1
+}
+function drawCallsOf(e, frame) {
+  // Accessories change rarely: recount each avatar about once a second, staggered.
+  if (e.calls === undefined || (frame + e.stagger) % 60 === 0) {
+    _meshes = 0
+    e.full.traverse(countMesh)
+    e.calls = Math.max(1, _meshes)
+  }
+  return e.calls
+}
+let frameNo = 0
+
+const _frustum = new Frustum()
+const _viewProjection = new Matrix4()
+/** Roughly a standing avatar: centred at chest height. */
+const _bounds = new Sphere(new Vector3(), 1.3)
 
 const _obj = new Object3D()
 const _color = new Color()
@@ -102,14 +131,17 @@ const RemotePlayer = memo(function RemotePlayer({ meta }) {
       dist: 0,
       id,
       tagGate,
+      stagger: id.length * 7 + id.charCodeAt(0),
     }
     // Hidden avatars (no data yet, or drawn as a crowd stand-in) cost nothing.
     skipWhenHidden(groupRef.current)
     skipWhenHidden(fullRef.current)
     registry.set(id, entry)
+    entries.push(entry)
     avatarAnchors.set(id, visualRef.current)
     return () => {
       registry.delete(id)
+      entries.splice(entries.indexOf(entry), 1)
       avatarAnchors.delete(id)
     }
   }, [id, tagGate])
@@ -171,7 +203,7 @@ const RemotePlayer = memo(function RemotePlayer({ meta }) {
         </group>
       </group>
       <group ref={tagRef}>
-        <Nametag id={id} name={meta.name} streak={meta.streak} title={meta.title} gate={tagGate} />
+        <Nametag id={id} name={meta.name} streak={meta.streak} title={meta.title} bot={meta.bot} gate={tagGate} />
       </group>
     </group>
   )
@@ -180,10 +212,12 @@ const RemotePlayer = memo(function RemotePlayer({ meta }) {
 /**
  * Everyone else in the room.
  *
- * LOD: only the nearest `maxFullAvatars` (per quality preset) are drawn as full
- * Bloxity avatars, ~6 draw calls each. The rest are one instanced blocky crowd mesh,
- * and everyone gets an instanced blob shadow, so 19 other players cost at most
- * maxFullAvatars * 6 + 2 draw calls.
+ * LOD: players you can SEE get their real Bloxity avatar (one merged skinned body
+ * plus one draw call per accessory), nearest first, up to the preset's
+ * `maxFullAvatars` within `fullAvatarDistance`. Players behind the camera never use
+ * up that budget (they wouldn't be drawn anyway), so in a full lobby the ones on
+ * screen look like themselves. Anyone past the budget is one instanced figure (one
+ * draw call for all of them), and everyone gets an instanced blob shadow.
  */
 export function RemotePlayers() {
   const players = useGame((s) => s.players)
@@ -216,29 +250,49 @@ export function RemotePlayers() {
     blobRef.current.count = 0
   }, [])
 
-  useFrame(() => {
+  useFrame(({ camera }) => {
     const proxy = proxyRef.current
     const blob = blobRef.current
     const settings = getSettings()
+    // Last frame's camera: close enough, and its matrices are up to date.
+    _viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+    _frustum.setFromProjectionMatrix(_viewProjection)
 
     ordered.length = 0
-    for (const e of registry.values()) {
+    for (let k = 0; k < entries.length; k += 1) {
+      const e = entries[k]
       if (!e.active) {
         e.full.visible = false
         continue
       }
-      e.dist = Math.hypot(e.group.position.x - localPlayer.position.x, e.group.position.z - localPlayer.position.z)
+      const p = e.group.position
+      e.dist = Math.hypot(p.x - localPlayer.position.x, p.z - localPlayer.position.z)
+      _bounds.center.set(p.x, p.y + 1, p.z)
+      e.inView = _frustum.intersectsSphere(_bounds)
       ordered.push(e)
     }
-    ordered.sort(byDistance)
+    ordered.sort(byViewThenDistance)
 
     let proxies = 0
     let blobs = 0
+    let fulls = 0
+    let calls = 0
+    let tags = 0
+    frameNo += 1
     for (let i = 0; i < ordered.length; i += 1) {
       const e = ordered[i]
-      const full = i < settings.maxFullAvatars
+      let full = e.inView && fulls < settings.maxFullAvatars && e.dist < settings.fullAvatarDistance
+      if (full) {
+        const cost = drawCallsOf(e, frameNo)
+        full = calls + cost <= settings.avatarDrawCalls
+        if (full) {
+          fulls += 1
+          calls += cost
+        }
+      }
       e.full.visible = full
-      e.tagGate.show = i < settings.maxNames
+      e.tagGate.show = e.inView && tags < settings.maxNames
+      if (e.tagGate.show) tags += 1
 
       if (!full) {
         _obj.position.copy(e.group.position)

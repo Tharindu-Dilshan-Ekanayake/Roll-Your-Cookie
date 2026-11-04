@@ -11,10 +11,10 @@ const TEX_W = 512
 const TEX_H = Math.round((TEX_W * GUIDE.height) / GUIDE.width)
 
 const STEPS = [
-  ['🎯', 'Read the TARGET time'],
-  ['👀', 'Watch the clock… then it goes BLIND!'],
-  ['✋', 'Hit STOP when you think it is time'],
-  ['🏆', `Closest wins the round · first to ${DATA.timer.winsNeeded}!`],
+  ['☠️', 'Poison cups for your opponent'],
+  ['🍪', 'Tap DROP to roll your cookie down'],
+  ['🥛', 'Milk = safe! Poison = lose a ❤️'],
+  ['🏆', `Last cookie standing wins $${DATA.winReward}!`],
 ]
 
 function drawBoard(canvas) {
@@ -55,7 +55,7 @@ function drawBoard(canvas) {
   ctx.textAlign = 'center'
   ctx.font = `700 22px ${GAME_FONT}`
   ctx.fillStyle = '#ffe36b'
-  ctx.fillText(`🎯 Bullseye (±${(DATA.timer.bullseyeMs / 1000).toFixed(2)}s) = +$${DATA.timer.bullseyeCash} bonus!`, TEX_W / 2, TEX_H - 26)
+  ctx.fillText(`🥛 Every dunk in the milk = +$${DATA.duel.milkBonus}!`, TEX_W / 2, TEX_H - 26)
 }
 
 /** The "how to play" sign by the entrance: one quad, one 512 px canvas texture. */

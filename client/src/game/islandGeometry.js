@@ -2,12 +2,9 @@ import {
   BufferAttribute,
   CanvasTexture,
   Color,
-  ExtrudeGeometry,
   LatheGeometry,
   OctahedronGeometry,
-  Path,
   RepeatWrapping,
-  Shape,
   SRGBColorSpace,
   TorusGeometry,
   Vector2,
@@ -19,8 +16,8 @@ import { BRASS, CLOUD_SEA, ROCK } from './sceneStyle'
 
 /**
  * Geometry and textures for the floating island: its rocky underside (shared with
- * the little islands in the sky), the brass railing, the gears, the crystals and
- * the sea of clouds below.
+ * the little islands in the sky), the brass railing, the crystals, the stands of the
+ * giant cookies and the sea of clouds below.
  */
 
 /** Deterministic 0..1 noise, so the rocks look the same on every load. */
@@ -102,45 +99,6 @@ export function railPosts(radius) {
 }
 
 /**
- * A gear of radius 1 in the XY plane (facing +Z), 12 teeth, a hub and six round
- * windows through it, extruded 0.22 thick and centred on its depth.
- */
-export function createGearGeometry() {
-  const TEETH = 12
-  const tip = 1
-  const root = 0.82
-  const shape = new Shape()
-  for (let k = 0; k < TEETH; k += 1) {
-    const a = (k / TEETH) * Math.PI * 2
-    const step = (Math.PI * 2) / TEETH
-    const pts = [
-      [root, a],
-      [tip, a + step * 0.12],
-      [tip, a + step * 0.42],
-      [root, a + step * 0.54],
-    ]
-    pts.forEach(([r, t], n) => {
-      const x = Math.cos(t) * r
-      const y = Math.sin(t) * r
-      if (k === 0 && n === 0) shape.moveTo(x, y)
-      else shape.lineTo(x, y)
-    })
-  }
-  shape.closePath()
-  const hub = new Path()
-  hub.absarc(0, 0, 0.14, 0, Math.PI * 2, true)
-  shape.holes.push(hub)
-  for (let k = 0; k < 6; k += 1) {
-    const a = (k / 6) * Math.PI * 2
-    const w = new Path()
-    w.absarc(Math.cos(a) * 0.5, Math.sin(a) * 0.5, 0.16, 0, Math.PI * 2, true)
-    shape.holes.push(w)
-  }
-  const geometry = new ExtrudeGeometry(shape, { depth: 0.22, bevelEnabled: false, curveSegments: 8 })
-  return geometry.translate(0, 0, -0.11)
-}
-
-/**
  * A crystal: a stretched octahedron with each face's shade baked into vertex colours,
  * so it reads as faceted while staying unlit (it glows). Instance colour tints it.
  */
@@ -209,10 +167,10 @@ export function createCloudSeaTexture() {
   return texture
 }
 
-/** Gears face the island's middle; each spins in its own plane (see Island). */
+/** The giant cookies face the island's middle; each rolls in its own plane (see Island). */
 export const GEAR_ITEMS = GEARS.map(([x, z, r]) => ({ x, z, r, y: r + 0.55, ry: Math.atan2(-x, -z) }))
 
-/** Stone blocks the gears stand on, with a post holding each axle. */
+/** Stone blocks the giant cookies stand on, with a post holding each axle. */
 export function gearStandBoxes() {
   const boxes = []
   for (const { x, z, r, y, ry } of GEAR_ITEMS) {
@@ -220,7 +178,7 @@ export function gearStandBoxes() {
     const nz = Math.cos(ry)
     boxes.push({ p: [x, 0.28, z], s: [r * 1.3, 0.56, 1.3], c: '#5b5476', ry })
     boxes.push({ p: [x, 0.62, z], s: [r * 1.1, 0.12, 1.1], c: BRASS.rail, ry })
-    // The axle's post stands behind the gear (away from the square), out of its face.
+    // The axle's post stands behind the cookie (away from the square), out of its face.
     boxes.push({ p: [x - nx * 0.34, y / 2 + 0.3, z - nz * 0.34], s: [0.26, y - 0.4, 0.26], c: BRASS.post, ry })
     boxes.push({ p: [x, y, z], s: [0.42, 0.42, 0.86], c: '#2c2840', ry })
   }

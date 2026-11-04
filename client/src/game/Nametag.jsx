@@ -14,12 +14,12 @@ const _world = new Vector3()
 
 /**
  * Name (with win streak) above a player's head, plus their speech bubble: emotes,
- * "Crunch! 😋", "OUCH! 😵"... Bubbles arrive through liveState, so a new
- * one redraws a canvas but never re-renders React.
+ * "Yum! 🥛", "Gotcha! 😈"... Bubbles arrive through liveState, so a new one
+ * redraws a canvas but never re-renders React. Bots are marked with a 🤖.
  *
  * Place inside the player's group; distance is measured from the tag's world position.
  */
-export function Nametag({ id, name, streak, title = '', isSelf = false, gate = null }) {
+export function Nametag({ id, name, streak, title = '', isSelf = false, bot = false, gate = null }) {
   const ref = useRef(null)
   const seenVersion = useRef(0)
   const labels = useDisposable(
@@ -36,10 +36,10 @@ export function Nametag({ id, name, streak, title = '', isSelf = false, gate = n
     const t = titleById(title)
     const lines = []
     if (t) lines.push({ text: t.name, size: 26, color: t.color, rainbow: Boolean(t.rainbow) })
-    lines.push({ text: name, size: 34 })
+    lines.push({ text: bot ? `${name} 🤖` : name, size: 34, color: bot ? '#cfe3ff' : undefined })
     if (streak > 0) lines.push({ text: `🔥 ${streak}`, size: 24, color: '#ffd23d' })
     labels.name.set(lines)
-  }, [labels, name, streak, title])
+  }, [labels, name, streak, title, bot])
 
   useFrame(() => {
     const self = ref.current

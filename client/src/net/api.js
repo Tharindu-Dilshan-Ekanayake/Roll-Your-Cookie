@@ -30,3 +30,13 @@ export function send(msg) {
 export function retryConnection() {
   socket?.retryConnection()
 }
+
+/** Back after being moved out of the lobby for being away. */
+export function comeBack() {
+  socket?.comeBack()
+}
+
+/** "I'M HERE!" on the "Still there?" prompt. */
+export function imHere() {
+  socket?.imHere()
+}

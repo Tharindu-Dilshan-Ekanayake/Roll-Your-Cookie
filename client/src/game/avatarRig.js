@@ -538,9 +538,10 @@ const turn = (rig, name, angle) => rotateBone(rig, name, 'axisY', angle)
  * @param {{ time: number, speed: number, grounded: boolean, maxSpeed: number, seated?: boolean,
  *           dancing?: boolean, press?: number, zap?: number, headSpin?: number,
  *           down?: boolean }} motion
- *   At a table: `press` lifts the right hand (1) and slams it down on the button (a
- *   little below 0), `zap` (0..1) knocks the chin back, `headSpin` (radians) spins
- *   the head after a zap, and `down` lies flat on the floor after an ejection.
+ *   At a table (`seated`, though everyone stands there): `press` lifts the right hand
+ *   (1) and flicks the cookie forward onto the board (a little below 0), `zap` (0..1)
+ *   knocks the chin back when the cookie lands in poison, `headSpin` (radians) spins
+ *   the head after it, and `down` lies flat on the floor after losing the duel.
  *   `speed` is horizontal speed in world units/sec; `maxSpeed` is what counts as a
  *   full-amplitude run, so the cycle scales smoothly from a walk to a sprint.
  */
@@ -570,7 +571,7 @@ export function animateRig(rig, motion) {
   rig.root.position.y = rig.rootRestY
   const headSpin = motion.headSpin || 0
 
-  // --- Ejected from the chair: flat on the floor, arms and legs flung out ------
+  // --- Launched after losing: flat on the floor, arms and legs flung out -------
   if (motion.down) {
     sway(rig, 'ArmL1', 1.35)
     sway(rig, 'ArmR1', -1.35)
@@ -603,32 +604,30 @@ export function animateRig(rig, motion) {
     return
   }
 
-  // --- Seated at a table: thighs forward, shins straight down, hands on the table.
-  // Negative swing is forward for a limb hanging down (see rotateBone); the knee
-  // undoes the thigh's rotation so the shin hangs vertically again.
+  // --- At a table: standing, feet apart, leaning on the board's rail with both
+  // hands. Dropping the cookie, the right hand rises and flicks it forward.
+  // Negative swing is forward for a limb hanging down (see rotateBone).
   if (seated) {
     const { press = 0, zap = 0 } = motion
-    swing(rig, 'LegL1', -1.5)
-    swing(rig, 'LegR1', -1.5)
-    swing(rig, 'LegL2', 1.5)
-    swing(rig, 'LegR2', 1.5)
+    sway(rig, 'LegL1', 0.06)
+    sway(rig, 'LegR1', -0.06)
 
-    // Hands rest on the table; stopping the clock, the right one rises and slams
-    // down on the button in front of them.
-    const rest = -0.85
+    const rest = -0.62
     swing(rig, 'ArmL1', rest)
-    swing(rig, 'ArmR1', rest - press * 1.1)
-    swing(rig, 'ArmR2', -Math.max(0, press) * 0.9)
+    swing(rig, 'ArmR1', rest - press * 1.35)
+    swing(rig, 'ArmL2', -0.35)
+    swing(rig, 'ArmR2', -0.35 - Math.max(0, press) * 0.6)
+    // A little lean in over the board, breathing.
+    swing(rig, 'Spine1', 0.1 + Math.sin(time * 1.6) * 0.02)
 
-    // Zapped: the head spins right round, chin knocked up and back.
+    // Poisoned: the head spins right round, chin knocked up and back.
     turn(rig, 'Neck1', headSpin)
     swing(rig, 'Neck1', -zap * 0.22)
-    swing(rig, 'Spine1', Math.sin(time * 1.6) * 0.02)
     return
   }
 
   // --- Airborne: tuck the legs, throw the arms up ---------------------------
-  // (Also flying out of the chair after an ejection.)
+  // (Also flying away from the table after losing.)
   if (!grounded) {
     swing(rig, 'LegL1', -0.55)
     swing(rig, 'LegL2', 0.75)

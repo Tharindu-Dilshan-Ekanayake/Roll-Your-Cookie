@@ -62,12 +62,16 @@ class Session {
    */
   constructor(client, room, player, identity, profile, options, now) {
     this.client = client
+    this.isBot = false
     this.id = client.sessionId
     this.room = room
     this.player = player
     this.seat = null
     this.lastEmoteAt = 0
     this.lastAnimAt = 0
+    /** Last sign of a person at the keyboard (see GameRoom.checkAway). */
+    this.lastActiveAt = now
+    this.awayWarned = false
     /** Verified Bloxity account id, or '' for a guest. */
     this.userId = identity.userId
 
@@ -75,6 +79,7 @@ class Session {
     this.giftReadyAt = now + Math.max(0, DATA.gift.intervalSec - this.profile.giftProgress) * 1000
 
     player.name = identity.name
+    player.bot = false
     player.uid = identity.userId
     player.uname = identity.username
     player.streak = this.profile.streak
@@ -125,6 +130,15 @@ class Session {
     })
   }
 
+  /** The player did something: they're here. Clears a "Still there?" warning. */
+  touch(now) {
+    this.lastActiveAt = now
+    if (this.awayWarned) {
+      this.awayWarned = false
+      this.send('afk', { inMs: -1 })
+    }
+  }
+
   /** Banks gift progress so a reconnect doesn't restart the timer. */
   close(now) {
     const remaining = Math.max(0, this.giftReadyAt - now) / 1000
@@ -135,15 +149,27 @@ class Session {
   /** Routes one client message. `msg` is untrusted. */
   handle(type, msg, now) {
     msg = msg && typeof msg === 'object' ? msg : {}
+    // Anything but the position heartbeat and avatar sync is the player doing
+    // something (the client also sends 'active' on any input: a camera drag, a
+    // tap in a menu). Movement counts in onPos, only if they really moved.
+    if (type !== 'pos' && type !== 'avatar') this.touch(now)
     switch (type) {
+      case 'active':
+        return undefined
       case 'pos':
-        return this.onPos(msg)
+        return this.onPos(msg, now)
       case 'sit':
         return this.onSit(msg, now)
       case 'leave':
         return this.seat?.table.leave(this, now)
-      case 'press':
-        return this.seat?.table.press(this, msg.ms, now)
+      case 'quick':
+        return this.onQuick(now)
+      case 'bot':
+        return this.onBot(now)
+      case 'traps':
+        return this.seat?.table.setTraps(this, msg.cups, msg.ready, now)
+      case 'drop':
+        return this.seat?.table.drop(this, msg.aim, now)
       case 'emote':
         return this.onEmote(msg, now)
       case 'buy':
@@ -165,13 +191,17 @@ class Session {
     }
   }
 
-  onPos(msg) {
+  onPos(msg, now) {
     if (this.seat) return
     const p = this.player
-    p.x = clamp(finite(msg.x, p.x), -HALF, HALF)
+    const x = clamp(finite(msg.x, p.x), -HALF, HALF)
+    const z = clamp(finite(msg.z, p.z), -HALF, HALF)
+    const ry = finite(msg.ry)
+    if (Math.abs(x - p.x) + Math.abs(z - p.z) > 0.05 || Math.abs(ry - p.ry) > 0.05) this.touch(now)
+    p.x = x
     p.y = clamp(finite(msg.y, 0), -5, 20)
-    p.z = clamp(finite(msg.z, p.z), -HALF, HALF)
-    p.ry = finite(msg.ry)
+    p.z = z
+    p.ry = ry
     p.s = clamp(finite(msg.s), 0, 20)
     p.g = Boolean(msg.g)
   }
@@ -186,6 +216,33 @@ class Session {
       return
     }
     const err = table.sit(this, now)
+    if (err) this.toast(err)
+  }
+
+  /** The PLAY button: a seat at the best table, wherever the player is standing. */
+  onQuick(now) {
+    if (this.seat) return
+    const table = this.room.quickTable(this)
+    if (!table) {
+      this.toast('Every table is busy! Try again in a moment')
+      return
+    }
+    const err = table.sit(this, now)
+    if (err) this.toast(err)
+  }
+
+  /**
+   * PLAY VS BOT: only once you've sat down at a table (PLAY, or E at one) and are
+   * waiting there alone, and only while the lobby is quiet (DATA.bot.maxLobbyPlayers
+   * people at most): in a busy lobby, people play each other.
+   */
+  onBot(now) {
+    if (!this.seat) return
+    if (this.room.sessions.size > DATA.bot.maxLobbyPlayers) {
+      this.toast('So many players here: find a real opponent! 🍪')
+      return
+    }
+    const err = this.seat.table.addBot(this, now)
     if (err) this.toast(err)
   }
 
@@ -219,13 +276,13 @@ class Session {
 
   onBuy(msg, now) {
     const p = this.profile
-    if (msg.kind === 'chair') {
-      const chair = DATA.chairs.find((c) => c.id === msg.id)
-      if (!chair || p.ownedChairs.includes(chair.id)) return
-      if (!this.spend(chair.price)) return
-      p.ownedChairs.push(chair.id)
-      p.equippedChair = chair.id
-      this.toast(`Bought ${chair.name}! 🪑`)
+    if (msg.kind === 'cookie') {
+      const cookie = DATA.cookies.find((c) => c.id === msg.id)
+      if (!cookie || p.ownedCookies.includes(cookie.id)) return
+      if (!this.spend(cookie.price)) return
+      p.ownedCookies.push(cookie.id)
+      p.equippedCookie = cookie.id
+      this.toast(`Bought ${cookie.name}! 🍪`)
     } else if (msg.kind === 'emote') {
       const emote = DATA.emotes.find((e) => e.id === msg.id)
       if (!emote || p.ownedEmotes.includes(emote.id)) return
@@ -259,7 +316,8 @@ class Session {
       const pack = DATA.starterPack
       if (!this.spend(pack.price)) return
       p.starterPack = true
-      if (!p.ownedChairs.includes(pack.chair)) p.ownedChairs.push(pack.chair)
+      if (!p.ownedCookies.includes(pack.cookie)) p.ownedCookies.push(pack.cookie)
+      p.equippedCookie = pack.cookie
       for (const id of pack.emotes) if (!p.ownedEmotes.includes(id)) p.ownedEmotes.push(id)
       this.toast('Starter Pack claimed! ⭐')
     } else {
@@ -291,8 +349,8 @@ class Session {
       this.pushProfile(now)
       return
     }
-    if (!this.profile.ownedChairs.includes(msg.id)) return
-    this.profile.equippedChair = msg.id
+    if (!this.profile.ownedCookies.includes(msg.id)) return
+    this.profile.equippedCookie = msg.id
     profiles.markDirty(this.profile)
     this.pushProfile(now)
     this.seat?.table.sync(now)

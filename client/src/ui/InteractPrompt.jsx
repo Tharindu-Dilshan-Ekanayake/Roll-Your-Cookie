@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { sfx } from '../audio/sfx'
-import { chairById, INTERACTABLES } from '../game/layout'
+import { cookieById, INTERACTABLES } from '../game/layout'
 import { useTouch } from './touch'
 import { useGame } from '../net/gameStore'
 import { localPlayer } from '../net/liveState'
@@ -32,28 +32,28 @@ function describe(target, { tables, profile }) {
     const free = !t || (t.phase === 'waiting' && t.seats.some((s) => !s))
     return free ? { label: 'Play', enabled: true } : { label: 'Table busy', enabled: false }
   }
-  if (target.kind === 'chair') {
-    const chair = chairById(target.id)
-    if (profile?.equippedChair === chair.id) return { label: `${chair.name} equipped`, enabled: false }
-    if (profile?.ownedChairs.includes(chair.id)) return { label: `Equip ${chair.name}`, enabled: true }
-    return { label: `Buy ${chair.name} (${money(chair.price)})`, enabled: true }
+  if (target.kind === 'cookie') {
+    const cookie = cookieById(target.id)
+    if (profile?.equippedCookie === cookie.id) return { label: `${cookie.name} equipped 🍪`, enabled: false }
+    if (profile?.ownedCookies.includes(cookie.id)) return { label: `Equip ${cookie.name}`, enabled: true }
+    return { label: `Buy ${cookie.name} (${money(cookie.price)})`, enabled: true }
   }
-  return { label: 'Open the Store 🛒', enabled: true }
+  return { label: 'Open the Cookie Shop 🛒', enabled: true }
 }
 
 function act(target) {
   const { profile, openModal } = useGame.getState()
   sfx.click()
   if (target.kind === 'table') send({ t: 'sit', table: target.id })
-  else if (target.kind === 'store') openModal('shop', 'chairs')
-  else if (target.kind === 'chair') {
-    if (profile?.ownedChairs.includes(target.id)) send({ t: 'equip', id: target.id })
-    else send({ t: 'buy', kind: 'chair', id: target.id })
+  else if (target.kind === 'store') openModal('shop', 'cookies')
+  else if (target.kind === 'cookie') {
+    if (profile?.ownedCookies.includes(target.id)) send({ t: 'equip', kind: 'cookie', id: target.id })
+    else send({ t: 'buy', kind: 'cookie', id: target.id })
   }
 }
 
 /**
- * Roblox-style proximity prompt: walk up to a table, a showroom chair or the Store's
+ * Proximity prompt: walk up to a table, a showroom cookie or the Cookie Shop's
  * counter and press E (or tap the prompt on touch screens).
  *
  * Proximity is polled on a timer, not computed in the render loop, so moving around
@@ -91,6 +91,7 @@ export function InteractPrompt() {
     return () => window.removeEventListener('keydown', onKey)
   }, [trigger])
 
+  // A bot is offered only once you've sat down at a table (see MatchUI), never here.
   if (!info) return null
   return (
     <button

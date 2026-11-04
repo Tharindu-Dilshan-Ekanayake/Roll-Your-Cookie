@@ -27,7 +27,7 @@ import { useDisposable } from './useDisposable'
  *
  * The structure (plinths, banded pillars, beam, crown, flags) is plain boxes, added
  * to the world's shared scenery mesh by archBoxes() in arch.js, so it costs no draw
- * calls of its own. The marquee sign and the stopwatch / target pillar plaques are one mesh with
+ * calls of its own. The marquee sign and the cookie / milk pillar plaques are one mesh with
  * one atlas texture: 1 draw call. The bulbs "chase" by swapping between two
  * pre-drawn textures a few times a second, so nothing is redrawn or re-uploaded
  * after start-up.
@@ -107,9 +107,9 @@ function drawAtlas(canvas, phase) {
   ctx.fillStyle = phase ? '#ffffff' : '#7ff6ff'
   ctx.fillText('★', w / 2 + tw / 2 + size * 0.55, h * 0.5)
 
-  // ---- Pillar plaques: a stopwatch and a target ----
+  // ---- Pillar plaques: a cookie and a glass of milk ----
   const py = BOARD_PX + 8
-  ;['⏱️', '🎯'].forEach((icon, k) => {
+  ;['🍪', '🥛'].forEach((icon, k) => {
     const px = 8 + k * (PLAQUE_PX + 16)
     roundRect(ctx, px, py, PLAQUE_PX, PLAQUE_PX, 16)
     ctx.fillStyle = k ? '#c27bff' : '#2fbfd8'

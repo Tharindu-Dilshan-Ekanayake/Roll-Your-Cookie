@@ -3,8 +3,9 @@ import { Callbacks, Client } from '@colyseus/sdk'
 import { sfx } from '../audio/sfx'
 import { boxityEnv } from '../bloxity/env'
 import { loadEmoteCatalog, onPlatformEvent, platform } from '../bloxity/platform'
-import { DATA, SEATED_BACK, seatPosition, SPAWN } from '../game/layout'
+import { DATA, seatPosition, SPAWN } from '../game/layout'
 import { getSettings } from '../game/quality'
+import { clearRolls, startRoll } from '../game/rolls'
 import { isPlayingPhase, useGame } from './gameStore'
 import {
   actionFx,
@@ -25,8 +26,12 @@ import {
  * Public world state (players, their positions, the tables) arrives as Colyseus
  * state patches at 10 Hz. Positions go straight into liveState so they never cause
  * a React render; everything else lands in the zustand store for the UI. Private
- * data (this player's duel, profile) and one-off events (bubbles, results, toasts)
- * arrive as room messages.
+ * data (this player's duel, profile) and one-off events (rolls, bubbles, results,
+ * toasts) arrive as room messages.
+ *
+ * The connection is never the player's problem: joining, a cold start (the server
+ * waking up) and reconnecting all happen quietly, behind the loading screen or
+ * the game, retrying for as long as it takes. Nothing about it is ever shown.
  *
  * Where it connects (see endpointFor):
  * - Bloxity hosting (VITE_BLOXITY_HOSTING_ID set): through Bloxity's matchmaker,
@@ -39,19 +44,21 @@ const ROOM_NAME = DATA.bloxity.roomName
 const HOSTING_ID = import.meta.env.VITE_BLOXITY_HOSTING_ID || ''
 const POS_INTERVAL_MS = 100
 const HEARTBEAT_MS = 1000
-/** Roughly where a seated player's head is. */
-const SEATED_HEAD_Y = 1.3
-/** How far back from the table (against sideways 1) an ejected player flies. */
+/** How far back from the table (against sideways 1) a launched loser flies. */
 const FLY_BACK = 0.8
-/** The server ejects the loser this long after the result; the winner dances after it. */
+/** The server launches the loser this long after the result; the winner dances after it. */
 const EJECT_MS = 900
 const DANCE_AFTER_EJECT_MS = 500
-/** A cold start can take ~45 s; stop retrying after this long without a room. */
-const GIVE_UP_MS = 60000
+/** Longest wait between quiet reconnection attempts. */
+const MAX_RETRY_MS = 8000
 /** Players already in the room when we join get playerInRoom, later ones playerJoined. */
 const INITIAL_SYNC_MS = 1500
 /** The server's close code when this account joined from another window. */
 const KICKED_REPLACED = 4100
+/** The server's close code when it freed our place after we were away too long. */
+const KICKED_AWAY = 4101
+/** Input is reported to the server at most this often (it only needs to know we're here). */
+const ACTIVE_EVERY_MS = 15000
 /** Consented leave (we called room.leave()). */
 const CONSENTED = 4000
 
@@ -63,7 +70,6 @@ let hello = null
 let joinToken = 0
 let retryDelay = 500
 let retryTimer = null
-let firstAttemptAt = 0
 let posTimer = null
 /** server clock - local clock, from the welcome message. */
 let clockOffset = 0
@@ -109,10 +115,11 @@ export function send(msg) {
  */
 export function connect(joinOptions) {
   hello = joinOptions
+  // A fresh join (e.g. after signing in) is a way back from being away, too.
+  useGame.setState({ away: false, awayWarnUntil: 0 })
   const previousRelay = relayRoomId
   const previous = detachRoom()
   rejoinTarget = previous ? { roomId: previous.roomId, relayRoomId: previousRelay } : null
-  firstAttemptAt = 0
   retryDelay = 500
   join().finally(() => previous?.leave(true).catch(() => {}))
 }
@@ -176,7 +183,6 @@ async function joinDeepLink(roomId, target) {
 async function join() {
   const token = ++joinToken
   clearTimeout(retryTimer)
-  firstAttemptAt ||= Date.now()
   useGame.setState({ status: 'connecting' })
   try {
     // Every connection resolves a fresh endpoint and builds a new Client from it:
@@ -206,34 +212,68 @@ async function join() {
     room = joined
     relayRoomId = via
     retryDelay = 500
-    firstAttemptAt = 0
     attach(joined)
   } catch (err) {
     if (token !== joinToken) return
-    console.warn('[net] could not join the game server:', err?.message || err)
-    if (Date.now() - firstAttemptAt > GIVE_UP_MS) {
-      useGame.setState({ status: 'failed' })
-      return
-    }
+    // Quietly, again and again: a server waking up just takes a little longer.
+    console.warn('[net] could not join the game server yet:', err?.message || err)
     useGame.setState({ status: 'offline' })
     scheduleRejoin()
   }
 }
 
-/** After giving up: the "Retry" button. */
+/** Tries again straight away (e.g. the tab came back to the foreground). */
 export function retryConnection() {
-  if (!hello) return
-  firstAttemptAt = 0
+  if (!hello || room || useGame.getState().away) return
   retryDelay = 500
   join()
+}
+
+/** Back after being moved out for being away: join again (the fullest lobby with room). */
+export function comeBack() {
+  useGame.setState({ away: false, awayWarnUntil: 0 })
+  if (!hello || room) return
+  retryDelay = 500
+  join()
+}
+
+/**
+ * Tells the server a person is here: any tap, click, key, scroll or mouse move
+ * (camera drags and menu browsing included, which send nothing else). At most once
+ * every ACTIVE_EVERY_MS, or at once while a "Still there?" warning is showing.
+ */
+let lastActiveSent = 0
+function reportActive() {
+  if (!room || useGame.getState().status !== 'online') return
+  const warned = useGame.getState().awayWarnUntil > 0
+  const now = Date.now()
+  if (!warned && now - lastActiveSent < ACTIVE_EVERY_MS) return
+  lastActiveSent = now
+  room.send('active', {})
+  if (warned) useGame.setState({ awayWarnUntil: 0 })
+}
+export const imHere = () => {
+  lastActiveSent = 0
+  reportActive()
+}
+for (const type of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart']) {
+  window.addEventListener(type, reportActive, { passive: true, capture: true })
 }
 
 function scheduleRejoin() {
   if (!hello) return
   clearTimeout(retryTimer)
   retryTimer = setTimeout(join, retryDelay)
-  retryDelay = Math.min(retryDelay * 2, 8000)
+  retryDelay = Math.min(retryDelay * 2, MAX_RETRY_MS)
 }
+
+// Back from the background (a phone's lock screen): don't sit out the backoff.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && !room && hello) retryConnection()
+})
+
+/** Left by our own choice or the server's: don't come back on our own. */
+const NO_REJOIN = new Set([KICKED_REPLACED, CONSENTED, KICKED_AWAY])
 
 function resetWorld() {
   remotes.clear()
@@ -241,9 +281,10 @@ function resetWorld() {
   remoteEmotes.clear()
   bubbles.clear()
   actionFx.clear()
+  clearRolls()
   localPlayer.seat = null
   localPlayer.emote = null
-  useGame.setState({ players: {}, tables: {}, match: null, localPress: null })
+  useGame.setState({ players: {}, tables: {}, match: null, trapDraft: null, localDrop: null, landing: null })
 }
 
 /** Wires a freshly joined room's state callbacks and messages into the client. */
@@ -265,9 +306,11 @@ function attach(r) {
     cb.listen(player, 'title', () => setPlayerMeta(id, player), false)
     if (id === r.sessionId) return
 
-    // Bloxity's friend-join toasts.
-    if (Date.now() - joinedAt < INITIAL_SYNC_MS) platform.playerInRoom(player.uname)
-    else platform.playerJoined(player.uname)
+    // Bloxity's friend-join toasts (bots have no Bloxity account).
+    if (!player.bot) {
+      if (Date.now() - joinedAt < INITIAL_SYNC_MS) platform.playerInRoom(player.uname)
+      else platform.playerJoined(player.uname)
+    }
 
     pushRemote(id, player.x, player.y, player.z, player.ry, player.s, player.g)
     cb.onChange(player, () => pushRemote(id, player.x, player.y, player.z, player.ry, player.s, player.g))
@@ -304,7 +347,9 @@ function attach(r) {
     platform.updateRoom('')
     resetWorld()
     useGame.setState({ status: 'offline' })
-    if (code === KICKED_REPLACED || code === CONSENTED) return
+    // Moved out for being away: one tap on "Play again" brings us back (comeBack).
+    if (code === KICKED_AWAY) useGame.setState({ away: true, awayWarnUntil: 0 })
+    if (NO_REJOIN.has(code)) return
     // Closed unexpectedly (e.g. its pod is being replaced): resolve again and rejoin.
     scheduleRejoin()
   })
@@ -347,10 +392,19 @@ onPlatformEvent('chat', (m) => {
     ? selfId
     : Object.values(players).find((p) => p.uid && p.uid === m.userId)?.id
   if (id) setBubble(id, m.text, m.seconds * 1000)
+  // Chatting in Bloxity's own chat panel (outside the game's page) is being here too.
+  if (m.isLocalPlayer) reportActive()
 })
 
-onPlatformEvent('breakStart', () => sfx.setMuted(true))
-onPlatformEvent('breakEnd', () => sfx.setMuted(false))
+// An ad break is not being away: the clock starts again when it ends.
+onPlatformEvent('breakStart', () => {
+  sfx.setMuted(true)
+  imHere()
+})
+onPlatformEvent('breakEnd', () => {
+  sfx.setMuted(false)
+  imHere()
+})
 
 function startPositionUpdates() {
   clearInterval(posTimer)
@@ -400,6 +454,7 @@ function setPlayerMeta(id, player) {
         id,
         name: player.name,
         uid: player.uid,
+        bot: Boolean(player.bot),
         streak: player.streak,
         level: player.level,
         title: player.title,
@@ -424,7 +479,7 @@ function removePlayer(id) {
   })
 }
 
-/** Mirrors who is sitting where (and who is dancing after a win) for remote players' pose. */
+/** Mirrors who is standing where (and who is dancing after a win) for remote players' pose. */
 function indexSeats(table) {
   const wasHere = []
   for (const [id, seat] of remoteSeats) {
@@ -437,7 +492,7 @@ function indexSeats(table) {
     const dancing = table.phase === 'ended' && table.winner === s.id
     remoteSeats.set(s.id, { ...seatPosition(table.id, i), table: table.id, dancing })
   })
-  // Whoever stood up leaves their duel behind (a knockout's flight included).
+  // Whoever left the table leaves their duel behind (a loser's flight included).
   for (const id of wasHere) if (!remoteSeats.has(id)) actionFx.delete(id)
 }
 
@@ -446,21 +501,18 @@ function applyTable(id, t) {
   const table = {
     id,
     phase: t.phase,
-    seats: [t.seat0 ? { id: t.seat0, chair: t.chair0 } : null, t.seat1 ? { id: t.seat1, chair: t.chair1 } : null],
+    seats: [t.seat0 ? { id: t.seat0, cookie: t.cookie0 } : null, t.seat1 ? { id: t.seat1, cookie: t.cookie1 } : null],
     winner: t.winner || null,
     endsAt: t.endsAt ? t.endsAt - clockOffset : 0,
-    /** When this round's clock starts (local clock), 0 outside a round. */
-    startAt: t.startAt ? t.startAt - clockOffset : 0,
+    /** When the current aim began (local clock): the launcher's sweep starts then. */
+    aimAt: t.aimAt ? t.aimAt - clockOffset : 0,
     round: t.round,
-    target: t.target,
-    show: t.show,
-    scores: [t.score0, t.score1],
-    /** Each seat has stopped its clock this round. */
-    stops: [t.stop0, t.stop1],
-    /** Each seat's revealed time in ms (-1 still secret, -2 never pressed). */
-    times: [t.time0, t.time1],
-    /** Seat that won the round being revealed (-1 tie / none). */
-    roundWinner: t.rwin,
+    poisons: t.poisons,
+    hearts: [t.hearts0, t.hearts1],
+    turn: t.turn,
+    ready: [t.ready0, t.ready1],
+    lastCup: t.lastCup,
+    lastKind: t.lastKind,
   }
   indexSeats(table)
   useGame.setState((s) => ({ tables: { ...s.tables, [id]: table } }))
@@ -470,7 +522,11 @@ function applyTable(id, t) {
 function withTimes(match) {
   if (!match) return null
   const now = Date.now()
-  return { ...match, endsAt: now + (match.endsInMs || 0), startAt: now + (match.startInMs || 0) }
+  return {
+    ...match,
+    endsAt: now + (match.endsInMs || 0),
+    aimStart: now - (match.aimElapsedMs || 0),
+  }
 }
 
 function withProfileDeadlines(profile) {
@@ -485,22 +541,13 @@ function positionOf(id) {
   return remotes.get(id) || null
 }
 
-/** A seated player's seat ({ x, z, ry, table }), local or remote, or null. */
+/** A player's spot at a table ({ x, z, ry, table }), local or remote, or null. */
 function seatOf(id) {
   if (id === useGame.getState().selfId) {
     const m = useGame.getState().match
     return localPlayer.seat && m ? { ...localPlayer.seat, table: m.table } : null
   }
   return remoteSeats.get(id) || null
-}
-
-/** Where a seated player's head is, roughly: over the seat, leant back a little. */
-function headOf(seat) {
-  return {
-    x: seat.x - Math.sin(seat.ry) * SEATED_BACK,
-    y: SEATED_HEAD_Y,
-    z: seat.z - Math.cos(seat.ry) * SEATED_BACK,
-  }
 }
 
 /** The server's confirmations come as toasts; each kind gets its sound. */
@@ -513,22 +560,7 @@ function playToastSound(text) {
 /** actionFx is keyed by session id, except the local player's entry. */
 const fxKey = (id) => (id === useGame.getState().selfId ? SELF_ANCHOR : id)
 
-/** A seated player loses a round: their button zaps them, sparks off their head. */
-function playZap(id, now) {
-  const seat = seatOf(id)
-  if (!seat) return
-  const key = fxKey(id)
-  actionFx.set(key, { ...actionFx.get(key), zap: now, side: Math.random() < 0.5 ? -1 : 1 })
-  if (getSettings().particles) {
-    const head = headOf(seat)
-    effectQueue.push({ kind: 'sparks', x: head.x, y: head.y, z: head.z })
-  }
-  if (id === useGame.getState().selfId) {
-    useGame.setState({ flash: { kind: 'zap', at: now, delay: 0, until: now + 800 } })
-  }
-}
-
-/** The duel's loser: their chair launches them off to one side and back from the table. */
+/** The duel's loser: launched off to one side and back from the table. */
 function playEject(id, now) {
   const seat = seatOf(id)
   if (!seat) return
@@ -565,24 +597,31 @@ const handlers = {
     localPlayer.seat = next ? { ...seatPosition(next.table, next.seat), dancing: Boolean(next.won) } : null
 
     if (next && prev) {
-      // A new round: its target is announced.
-      if (next.phase === 'target' && prev.phase !== 'target') sfx.go()
-      if (next.phase === 'running' && next.theirPressed && !prev.theirPressed) sfx.theirPress()
-      // The reveal: who was closer?
-      if (next.phase === 'reveal' && prev.phase !== 'reveal') {
-        if (next.roundWinner === 'me') sfx.roundWin()
-        else if (next.roundWinner === 'them') sfx.zap()
-        else sfx.tick()
+      // A new round: time to poison some cups.
+      if (next.phase === 'poison' && (prev.phase !== 'poison' || prev.round !== next.round)) sfx.go()
+      // Your turn to drop.
+      if (next.phase === 'aim' && next.turn === next.seat && (prev.phase !== 'aim' || prev.turn !== next.turn)) {
+        sfx.yourTurn()
       }
+      // The opponent locked their poison in.
+      const o = 1 - next.seat
+      if (next.phase === 'poison' && next.ready[o] && !prev.ready[o]) sfx.theirReady()
     }
-    // Standing up leaves the duel behind (an ejection's flight included).
+    // Leaving the table leaves the duel behind (a loser's flight included).
     if (!next) actionFx.delete(SELF_ANCHOR)
-    useGame.setState({
+    useGame.setState((s) => ({
       match: next,
-      ...(!next ? { localPress: null } : {}),
+      // A new round starts from the server's picks; a new turn can be dropped again.
+      ...(!next || s.trapDraft?.round !== next.round ? { trapDraft: null } : {}),
+      ...(!next ? { localDrop: null, landing: null } : {}),
       // The quit popup only makes sense while a duel is under way.
       ...(!isPlayingPhase(next?.phase) ? { quitAsk: false } : {}),
-    })
+    }))
+  },
+
+  /** A cookie was dropped at a table, anywhere in the room: everyone animates it. */
+  roll(msg) {
+    startRoll(msg)
   },
 
   /** Lost a duel: back to the lobby spawn point. */
@@ -599,41 +638,29 @@ const handlers = {
 
   /**
    * Table actions anywhere in the room, so every duel looks alive from the square:
-   * a press (hand slams the button), a zap (lost a round), an ejection (lost the
-   * duel) or a bullseye.
+   * a drop (the hand flicks the cookie onto the board) or a launch (lost the duel).
+   * Landing in poison is animated by rolls.js, in step with the cookie.
    */
   fx(msg) {
     const now = Date.now()
     const key = fxKey(msg.id)
-    if (msg.kind === 'press') {
-      // The local player's own press already started the animation (timerActions).
+    if (msg.kind === 'drop') {
+      // The local player's own drop already started the animation (duelActions).
       const fx = actionFx.get(key)
       if (!fx?.press || now - fx.press > 1000) actionFx.set(key, { ...fx, press: now })
       return
     }
-    if (msg.kind === 'zap') {
-      playZap(msg.id, now)
-      return
-    }
-    if (msg.kind === 'eject') {
-      playEject(msg.id, now)
-      return
-    }
-    if (msg.kind === 'bullseye') {
-      const seat = seatOf(msg.id)
-      if (seat && getSettings().particles) {
-        const head = headOf(seat)
-        effectQueue.push({ kind: 'confetti', x: head.x, y: head.y + 0.6, z: head.z })
-      }
-      if (msg.id === useGame.getState().selfId) {
-        sfx.bullseye()
-        useGame.setState({ flash: { kind: 'bullseye', at: now, delay: 0, until: now + 900 } })
-      }
-    }
+    if (msg.kind === 'eject') playEject(msg.id, now)
   },
 
   bubble(msg) {
     setBubble(msg.id, msg.text)
+  },
+
+  /** "Still there?": we'll be moved out in `inMs` unless we do something (-1: cleared). */
+  afk(msg) {
+    useGame.setState({ awayWarnUntil: msg.inMs >= 0 ? Date.now() + msg.inMs : 0 })
+    if (msg.inMs >= 0) sfx.pop()
   },
 
   toast(msg) {
@@ -661,9 +688,9 @@ const handlers = {
   },
 
   result(msg) {
-    // The winner climbs up to dance once the loser has been ejected.
+    // The winner dances once the loser has been launched.
     if (msg.winner) {
-      const wait = msg.reason === 'timer' ? EJECT_MS + DANCE_AFTER_EJECT_MS : 0
+      const wait = msg.reason === 'hearts' ? EJECT_MS + DANCE_AFTER_EJECT_MS : 0
       const key = fxKey(msg.winner)
       actionFx.set(key, { ...actionFx.get(key), danceAt: Date.now() + wait })
     }
@@ -693,9 +720,10 @@ function showResult(msg) {
         reward: win ? msg.reward : msg.consolation || 0,
         /** What a quitter paid (the winner's reward already includes it). */
         penalty: msg.penalty || 0,
-        /** Rounds won: [yours, theirs]. */
-        score: [msg.score[mySeat], msg.score[1 - mySeat]],
+        /** Hearts left: [yours, theirs]. */
+        hearts: [msg.hearts[mySeat], msg.hearts[1 - mySeat]],
         reason: msg.reason,
+        vsBot: Boolean(msg.vsBot),
         until: now + 4600,
       },
     })

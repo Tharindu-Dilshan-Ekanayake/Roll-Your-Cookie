@@ -1,19 +1,21 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 
 import { sfx } from '../audio/sfx'
-import { DATA, emoteById, TIMER, titleById } from '../game/layout'
-import { canPress, pressStop } from '../game/timerActions'
-import { isPlayingPhase, useGame } from '../net/gameStore'
+import { canDrop, currentTraps, dropCookie, lockTraps, toggleTrap } from '../game/duelActions'
+import { cookieById, DATA, emoteById, poisonKind, titleById } from '../game/layout'
+import { botsAllowed, isPlayingPhase, useGame } from '../net/gameStore'
 import { bubbles } from '../net/liveState'
 import { send } from '../net/api'
-import { BLIND_READING, money, NO_READING, offBy, stopwatch, useNow } from './format'
+import CookieIcon from './CookieIcon'
+import { money, useNow } from './format'
 import { useTouch } from './touch'
 
 const secondsLeft = (endsAt, now) => Math.max(0, Math.ceil((endsAt - now) / 1000))
-const NO_PRESS = -2
+/** How long the "MILK!" / "POISONED!" popup stays after a cookie lands. */
+const LANDING_MS = 1700
 
 /**
- * Big centre text (countdown, result), below the duel bar and above the players' heads.
+ * Big centre text (countdown, result), below the duel bar and above the board.
  * `top` is its own prop: two `top-*` classes on one element would fight.
  */
 function Banner({ children, top = 'top-[30%]' }) {
@@ -21,6 +23,34 @@ function Banner({ children, top = 'top-[30%]' }) {
     <div className={`pointer-events-none absolute left-1/2 z-30 w-[92vw] -translate-x-1/2 text-center ${top}`}>
       {children}
     </div>
+  )
+}
+
+/** While you wait alone at a table: a bot sits down opposite, right now. */
+function VsBotButton() {
+  const allowed = useGame(botsAllowed)
+  if (!allowed) return null
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        sfx.click()
+        send({ t: 'bot' })
+      }}
+      className="btn-3d press pointer-events-auto bg-gradient-to-b from-[#c49bff] via-[#8a5cff] to-[#5b2fd8] px-4 py-1.5 text-base font-bold text-white"
+    >
+      <span className="stroke-thin">🤖 PLAY VS BOT</span>
+    </button>
+  )
+}
+
+/** Under "Waiting for an opponent": a bot in a quiet lobby, patience in a busy one. */
+function WaitingHint() {
+  const allowed = useGame(botsAllowed)
+  return (
+    <span className="stroke-thin text-center text-base font-bold text-white/90">
+      {allowed ? 'Nobody coming? Play a bot instead!' : 'Lots of players around: someone will join you soon!'}
+    </span>
   )
 }
 
@@ -48,7 +78,8 @@ function LeaveButton({ label = 'Leave', forfeit = false }) {
  */
 function QuitDialog() {
   const cash = useGame((s) => s.profile?.cash ?? 0)
-  const pay = Math.min(DATA.forfeit.penalty, cash)
+  const vsBot = useGame((s) => Boolean(s.match?.vsBot))
+  const pay = vsBot ? 0 : Math.min(DATA.forfeit.penalty, cash)
   const stay = () => {
     sfx.click()
     useGame.setState({ quitAsk: false })
@@ -115,62 +146,76 @@ function QuitDialog() {
   )
 }
 
-/** ● ● / ○ ○: rounds won, out of the DATA.timer.winsNeeded that win the duel. */
-function ScorePips({ score, className = '' }) {
+/** ❤️ ❤️ 🖤: hearts left out of the duel's DATA.duel.hearts. */
+function Hearts({ hearts, max, className = '' }) {
   return (
-    <span className={`flex gap-1 ${className}`}>
-      {Array.from({ length: TIMER.winsNeeded }, (_, i) => (
-        <span
-          key={i}
-          className={`size-3.5 rounded-full border-2 border-black/70 ${i < score ? 'bg-[#ffd23d]' : 'bg-black/35'}`}
-        />
+    <span className={`flex gap-0.5 ${className}`}>
+      {Array.from({ length: max }, (_, i) => (
+        <span key={i} className={`heart ${i < hearts ? '' : 'heart-lost'}`}>
+          {i < hearts ? '❤️' : '🖤'}
+        </span>
       ))}
     </span>
   )
 }
 
-/** What a duelist last said (an emote, "STOP! ✋", "So close! 😬"), while it lasts. */
+/** What a duelist last said (an emote, "Yum! 🥛", "Gotcha! 😈"), while it lasts. */
 function speechOf(id, now) {
   const b = id ? bubbles.get(id) : null
   return b && b.text && b.until > now ? b.text : null
 }
 
-/** One side of the duel bar: title, name, rounds won, and a speech bubble underneath. */
-function DuelistCard({ player, isSelf, score, stopped, speech, align }) {
+/** What a seat is doing right now, as a little chip on its card. */
+function statusOf(match, seat) {
+  if (match.phase === 'poison') return match.ready[seat] ? ['✅ READY', 'chip-green'] : ['☠️ POISONING…', 'chip-dark']
+  if ((match.phase === 'aim' || match.phase === 'rolling') && match.turn === seat) {
+    return match.phase === 'aim' ? ['🍪 AIMING…', 'chip-gold'] : ['🍪 ROLLING…', 'chip-gold']
+  }
+  return null
+}
+
+/**
+ * One side of the duel bar: the cookie they roll, title, name, hearts, what they're
+ * doing and a speech bubble underneath. Seat 0 is on the left, as on the board.
+ */
+function DuelistCard({ player, isSelf, bot, cookie, hearts, max, status, speech, align, hurt }) {
   const title = titleById(player?.title)
+  const left = align === 'left'
   return (
-    <div className={`flex min-w-0 flex-1 flex-col gap-1.5 ${align === 'left' ? 'items-start' : 'items-end'}`}>
+    <div className={`flex min-w-0 flex-1 flex-col gap-1.5 ${left ? 'items-start' : 'items-end'}`}>
       <div
-        className={`ui-panel flex w-full min-w-0 flex-col px-2.5 py-1 ${
-          align === 'left' ? 'items-start text-left' : 'items-end text-right'
-        }`}
+        className={`ui-panel flex w-full min-w-0 items-center gap-2 px-2 py-1 ${left ? '' : 'flex-row-reverse'} ${
+          hurt ? 'shake' : ''
+        } ${isSelf ? 'card-self' : ''}`}
       >
-        {title && (
-          <span
-            className={`max-w-full truncate text-[0.65rem] font-bold leading-tight ${title.rainbow ? 'rainbow-text' : ''}`}
-            style={title.rainbow ? undefined : { color: title.color }}
-          >
-            {title.name}
-          </span>
-        )}
-        <span className="stroke-thin flex max-w-full items-center gap-1 text-base font-bold leading-tight text-white">
-          <span className="truncate">{player?.name || '…'}</span>
-          {isSelf && <span className="shrink-0 rounded bg-[#2a6bff] px-1 text-[0.6rem]">YOU</span>}
-        </span>
-        <span className={`mt-1 flex items-center gap-1.5 ${align === 'left' ? '' : 'flex-row-reverse'}`}>
-          <ScorePips score={score} />
-          {stopped && (
-            <span className="stroke-thin pop-in whitespace-nowrap rounded-full border-2 border-black/70 bg-gradient-to-b from-[#ff6b6b] to-[#d4182c] px-1.5 text-[0.65rem] font-bold leading-snug text-white">
-              ✋ STOPPED
+        <CookieIcon cookie={cookieById(cookie)} className="size-10 shrink-0" />
+        <div className={`flex min-w-0 flex-1 flex-col ${left ? 'items-start text-left' : 'items-end text-right'}`}>
+          {title && (
+            <span
+              className={`max-w-full truncate text-[0.65rem] font-bold leading-tight ${title.rainbow ? 'rainbow-text' : ''}`}
+              style={title.rainbow ? undefined : { color: title.color }}
+            >
+              {title.name}
             </span>
           )}
-        </span>
+          <span className={`stroke-thin flex max-w-full items-center gap-1 text-base font-bold leading-tight text-white ${left ? '' : 'flex-row-reverse'}`}>
+            <span className="truncate">{player?.name || '…'}</span>
+            {isSelf && <span className="shrink-0 rounded bg-[#2a6bff] px-1 text-[0.6rem]">YOU</span>}
+            {bot && <span className="shrink-0 rounded bg-[#6b7280] px-1 text-[0.6rem]">BOT 🤖</span>}
+          </span>
+          <Hearts hearts={hearts} max={max} className={`mt-0.5 ${left ? '' : 'flex-row-reverse'}`} />
+        </div>
       </div>
+      {status && (
+        <span className={`chip stroke-thin pop-in ${status[1]}`} key={status[0]}>
+          {status[0]}
+        </span>
+      )}
       {speech && (
         <div
           key={speech}
           className={`speech pop-in max-w-full rounded-xl border-2 border-black/70 bg-white px-2 py-0.5 text-sm font-bold leading-snug text-[#1d2433] ${
-            align === 'left' ? 'speech-left' : 'speech-right'
+            left ? 'speech-left' : 'speech-right'
           }`}
         >
           {speech}
@@ -180,273 +225,228 @@ function DuelistCard({ player, isSelf, score, stopped, speech, align }) {
   )
 }
 
-/** Top of the screen during a duel: you | the round | your opponent. */
+/** Top of the screen during a duel: seat 0 | the round | seat 1, as they stand at the board. */
 function DuelBar({ match, now }) {
   const selfId = useGame((s) => s.selfId)
   const profile = useGame((s) => s.profile)
-  const localPress = useGame((s) => s.localPress)
+  const table = useGame((s) => s.tables[match.table])
   const them = useGame((s) => (match.opponent ? s.players[match.opponent] : null))
+  const landing = useGame((s) => s.landing)
   const self = { name: profile?.name || 'You', title: profile?.equippedTitle }
-  const running = match.phase === 'running'
-  const iStopped = running && (match.pressed || localPress?.round === match.round)
+  const recentHurt = landing && landing.table === match.table && landing.hurt && now - landing.at < 600 ? landing.seat : -1
+
+  const card = (seat) => {
+    const mine = seat === match.seat
+    return (
+      <DuelistCard
+        key={seat}
+        player={mine ? self : them}
+        isSelf={mine}
+        bot={!mine && match.vsBot}
+        cookie={mine ? profile?.equippedCookie : table?.seats[seat]?.cookie}
+        hearts={match.hearts[seat]}
+        max={match.maxHearts}
+        status={statusOf(match, seat)}
+        speech={speechOf(mine ? selfId : match.opponent, now)}
+        align={seat === 0 ? 'left' : 'right'}
+        hurt={recentHurt === seat}
+      />
+    )
+  }
 
   return (
-    <div className="hud-top pointer-events-none absolute left-1/2 z-40 flex w-[min(94vw,36rem)] -translate-x-1/2 items-start gap-2">
-      <DuelistCard
-        player={self}
-        isSelf
-        score={match.myScore}
-        stopped={iStopped}
-        speech={speechOf(selfId, now)}
-        align="left"
-      />
+    <div className="hud-top pointer-events-none absolute left-1/2 z-40 flex w-[min(96vw,40rem)] -translate-x-1/2 items-start gap-2">
+      {card(0)}
       <div className="flex shrink-0 flex-col items-center gap-1 pt-0.5">
-        <div className="btn-3d flex h-12 min-w-12 items-center justify-center bg-[#2d6b78] px-2 text-xl font-bold text-white">
+        <div className="btn-3d flex h-12 min-w-12 items-center justify-center bg-[#8a4f2a] px-2 text-xl font-bold text-white">
           <span className="stroke-thin">{match.phase === 'countdown' ? 'VS' : `R${match.round}`}</span>
         </div>
-        <span className="stroke-thin whitespace-nowrap rounded-md bg-black/45 px-1.5 text-[0.7rem] font-bold text-white">
-          FIRST TO {TIMER.winsNeeded}
-        </span>
+        {match.phase !== 'countdown' && (
+          <span className="stroke-thin whitespace-nowrap rounded-md bg-black/45 px-1.5 text-[0.7rem] font-bold text-white">
+            ☠️ ×{match.poisons}
+          </span>
+        )}
       </div>
-      <DuelistCard
-        player={them}
-        score={match.theirScore}
-        stopped={running && match.theirPressed}
-        speech={speechOf(match.opponent, now)}
-        align="right"
-      />
+      {card(1)}
     </div>
   )
 }
 
-/**
- * The round's target, big, while it is announced. The clock starts as this card
- * leaves: it says how long the clock will show before it goes blind.
- */
-function TargetCard({ match, now }) {
-  const left = Math.max(1, secondsLeft(match.startAt, now))
-  return (
-    <div className="timer-pos pointer-events-none absolute left-1/2 z-30 -translate-x-1/2">
-      <div key={match.round} className="ui-panel slam flex flex-col items-center gap-1 px-5 py-3">
-        <span className="stroke-text text-2xl font-bold leading-none text-white">ROUND {match.round}</span>
-        <span className="stroke-thin text-sm font-bold text-white/85">🎯 Stop your clock at</span>
-        <span className="lcd lcd-amber">{stopwatch(match.target)}</span>
-        <span className="stroke-thin text-center text-sm font-bold text-white">
-          It shows for {(match.showMs / 1000).toFixed(match.showMs % 1000 ? 1 : 0)}s… then goes BLIND 🙈
-        </span>
-        <span className="stroke-text mt-1 text-xl font-bold text-[#ffcf4a]">Ready in {left}…</span>
-      </div>
-    </div>
-  )
-}
-
-/**
- * The running clock, driven from its own animation frame loop (no React re-render
- * 60 times a second). With `displayRef` / `statusRef` it writes the reading straight
- * into the DOM: the time while it shows, then "??.???". With `sounds` it plays the
- * clock's sounds: a tick for each of the last seconds before it starts, a beep as it
- * starts and a whoosh as it goes blind.
- */
-function useClock({ displayRef = null, statusRef = null, sounds = false }) {
-  useEffect(() => {
-    let raf = 0
-    let lastKey = ''
-    const heard = { round: -1, ticks: new Set(), started: false, blind: false }
-    const loop = () => {
-      raf = requestAnimationFrame(loop)
-      const { match, localPress, players } = useGame.getState()
-      if (!match) return
-      const now = Date.now()
-      const elapsed = now - match.startAt
-      if (heard.round !== match.round) {
-        heard.round = match.round
-        heard.ticks.clear()
-        heard.started = false
-        heard.blind = false
-      }
-
-      if (sounds && match.phase === 'target') {
-        const s = Math.ceil(-elapsed / 1000)
-        if (s >= 1 && s <= 2 && !heard.ticks.has(s)) {
-          heard.ticks.add(s)
-          sfx.tick()
-        }
-      }
-      if (match.phase !== 'running' && match.phase !== 'target') return
-      if (sounds && elapsed >= 0 && !heard.started) {
-        heard.started = true
-        sfx.beep()
-      }
-      const stopped = match.pressed || localPress?.round === match.round
-      const blind = elapsed >= match.showMs
-      if (sounds && blind && !heard.blind && elapsed < match.showMs + 500 && !stopped) {
-        heard.blind = true
-        sfx.blind()
-      }
-
-      let text
-      let status
-      let mode
-      if (elapsed < 0) {
-        text = stopwatch(0)
-        status = 'Get ready…'
-        mode = 'red'
-      } else if (stopped) {
-        text = NO_READING
-        const name = (match.opponent && players[match.opponent]?.name) || 'your opponent'
-        status = match.theirPressed ? '✋ Both stopped!' : `✋ Stopped! Waiting for ${name}…`
-        mode = 'dim'
-      } else if (!blind) {
-        text = stopwatch(elapsed)
-        status = '👀 Feel the speed…'
-        mode = 'red'
-      } else {
-        text = BLIND_READING
-        status = '🙈 BLIND! Count in your head…'
-        mode = 'blind'
-      }
-      if (!displayRef) return
-      const key = `${text}|${status}|${mode}`
-      if (key === lastKey) return
-      lastKey = key
-      if (displayRef.current) {
-        displayRef.current.textContent = text
-        displayRef.current.className = `lcd lcd-${mode}`
-      }
-      if (statusRef.current) statusRef.current.textContent = status
+/** Under the duel bar: what to do now, and how long is left. */
+function PhaseBanner({ match, now }) {
+  const theirName = useGame((s) => (match.opponent && s.players[match.opponent]?.name) || 'Your opponent')
+  const traps = useGame((s) => currentTraps(s))
+  const left = secondsLeft(match.endsAt, now)
+  let title = null
+  let sub = null
+  if (match.phase === 'poison') {
+    const ready = match.ready[match.seat]
+    title = ready ? '✅ POISON SET!' : `☠️ POISON ${match.poisons} CUPS!`
+    sub = ready
+      ? `Waiting for ${theirName}… ${left}s`
+      : `${traps.length}/${match.poisons} picked · ${left}s · their cookie rolls into these!`
+  } else if (match.phase === 'aim') {
+    if (match.turn === match.seat) {
+      title = '🍪 YOUR TURN!'
+      sub = `Tap DROP when it's over a safe cup · ${left}s`
+    } else {
+      title = `${theirName} is aiming… 😈`
+      sub = 'Your poison is in the coloured cups'
     }
-    raf = requestAnimationFrame(loop)
-    return () => cancelAnimationFrame(raf)
-  }, [displayRef, statusRef, sounds])
-}
-
-/** The clock's sounds, from the target's announcement until the round is revealed. */
-function ClockSounds() {
-  useClock({ sounds: true })
-  return null
-}
-
-function ClockPanel({ match }) {
-  const displayRef = useRef(null)
-  const statusRef = useRef(null)
-  useClock({ displayRef, statusRef })
+  } else if (match.phase === 'rolling') {
+    title = match.turn === match.seat ? '🍪 Rolling… come on, milk!' : '🍪 Rolling… come on, poison!'
+  }
+  if (!title) return null
   return (
-    <div className="timer-pos pointer-events-none absolute left-1/2 z-30 -translate-x-1/2">
-      <div className="ui-panel flex flex-col items-center gap-1 px-5 py-2.5">
-        <span className="stroke-thin rounded-full bg-black/40 px-2 text-sm font-bold text-[#ffcf4a]">
-          🎯 TARGET {stopwatch(match.target)}
-        </span>
-        <span ref={displayRef} className="lcd lcd-red">
-          00.00
-        </span>
-        <span ref={statusRef} className="stroke-thin text-center text-sm font-bold text-white" />
+    <div className="timer-pos pointer-events-none absolute left-1/2 z-30 w-[min(92vw,28rem)] -translate-x-1/2">
+      <div key={`${match.phase}:${match.turn}`} className="ui-panel slam flex flex-col items-center px-3 py-1">
+        <span className="stroke-text text-center text-xl font-bold leading-tight text-white">{title}</span>
+        {sub && <span className="stroke-thin text-center text-xs font-bold text-white/90">{sub}</span>}
       </div>
     </div>
   )
 }
 
-/** The big STOP button (also Space / Enter, or a tap on your button on the table). */
-function StopButton({ match }) {
-  const localPress = useGame((s) => s.localPress)
+/** The seven cups, as buttons along the bottom, while you poison them (or tap the cups). */
+function CupPicker({ match }) {
+  const traps = useGame((s) => currentTraps(s))
   const touch = useTouch((s) => s.touch)
-  const now = useNow(100)
-  const stopped = match.pressed || localPress?.round === match.round
-  const live = canPress(useGame.getState(), now)
+  const ready = match.ready[match.seat]
+  const full = traps.length === match.poisons
 
   useEffect(() => {
     const onKey = (e) => {
-      if ((e.code !== 'Space' && e.code !== 'Enter') || e.repeat) return
-      if (useGame.getState().quitAsk) return
-      if (pressStop()) e.preventDefault()
+      if (e.repeat || useGame.getState().quitAsk) return
+      const n = Number(e.key)
+      if (n >= 1 && n <= DATA.duel.cups) toggleTrap(n - 1)
+      else if (e.code === 'Enter' && lockTraps()) e.preventDefault()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
   return (
-    <div className="stop-pos pointer-events-none absolute left-1/2 z-40 flex -translate-x-1/2 flex-col items-center gap-1">
+    <div className="cup-pos pointer-events-none absolute left-1/2 z-40 flex w-[min(98vw,46rem)] -translate-x-1/2 flex-col items-center gap-2">
+      <div className="flex w-full gap-1 sm:gap-1.5">
+        {Array.from({ length: DATA.duel.cups }, (_, c) => {
+          const k = traps.indexOf(c)
+          const kind = k >= 0 ? poisonKind(k) : null
+          return (
+            <button
+              key={c}
+              type="button"
+              onClick={() => toggleTrap(c)}
+              className={`cup-btn btn-3d press pointer-events-auto flex min-w-0 flex-1 flex-col items-center justify-center px-0.5 font-bold text-white ${
+                kind ? 'cup-poison' : 'cup-milk'
+              }`}
+              style={kind ? { '--poison': kind.color } : undefined}
+            >
+              <span className="text-[1.15rem] leading-none">{kind ? kind.icon : '🥛'}</span>
+              <span className="stroke-thin w-full truncate text-center text-[0.7rem] leading-tight sm:text-sm">
+                {kind ? kind.name : `Cup ${c + 1}`}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+      <button
+        type="button"
+        disabled={!full || ready}
+        onClick={lockTraps}
+        className={`btn-3d press pointer-events-auto px-6 py-2 text-xl font-bold text-white ${
+          ready ? 'bg-[#3b3e45]' : full ? 'bg-gradient-to-b from-[#5dff5d] to-[#22c522] lock-pulse' : 'bg-[#5b6270]'
+        }`}
+      >
+        <span className="stroke-text">
+          {ready ? '✅ LOCKED IN' : full ? `LOCK IN ✅${touch ? '' : ' (Enter)'}` : `Pick ${match.poisons - traps.length} more`}
+        </span>
+      </button>
+    </div>
+  )
+}
+
+/** The big DROP button (also Space / Enter) while it's your turn. */
+function DropButton() {
+  const touch = useTouch((s) => s.touch)
+  const live = useGame((s) => canDrop(s))
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.code !== 'Space' && e.code !== 'Enter') || e.repeat) return
+      if (useGame.getState().quitAsk) return
+      if (dropCookie()) e.preventDefault()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  return (
+    <div className="drop-pos pointer-events-none absolute z-40 flex flex-col items-center gap-1">
       <button
         type="button"
         disabled={!live}
         onPointerDown={(e) => {
-          // On pointer down, not click: every millisecond counts.
+          // On pointer down, not click: aiming is all about timing.
           e.preventDefault()
-          pressStop()
+          dropCookie()
         }}
-        className={`stop-button press pointer-events-auto flex flex-col items-center justify-center rounded-full border-[5px] border-black font-bold text-white ${
-          stopped ? 'stop-done' : live ? 'stop-live' : 'stop-wait'
+        className={`drop-button press pointer-events-auto flex flex-col items-center justify-center rounded-full border-[5px] border-black font-bold text-white ${
+          live ? 'drop-live' : 'drop-done'
         }`}
       >
-        <span className="stroke-text text-[2rem] leading-none">{stopped ? '✋' : 'STOP'}</span>
+        <span className="text-[1.6rem] leading-none">🍪</span>
+        <span className="stroke-text text-[1.7rem] leading-none">DROP!</span>
       </button>
-      {!touch && !stopped && (
+      {!touch && live && (
         <span className="stroke-thin rounded-md bg-black/45 px-2 text-xs font-bold text-white">or press SPACE</span>
       )}
     </div>
   )
 }
 
-/** One player's line in the round's reveal: their stop and how far off it was. */
-function RevealRow({ name, time, target, won, isSelf }) {
-  const pressed = time !== NO_PRESS && time >= 0
-  const off = pressed ? time - target : 0
-  const bullseye = pressed && Math.abs(off) <= TIMER.bullseyeMs
+/** "MILK! Safe" / "POISONED! −1 ❤️" / "GOTCHA!", the moment a cookie lands at your table. */
+function LandingPopup({ match }) {
+  const landing = useGame((s) => s.landing)
+  const theirName = useGame((s) => (match.opponent && s.players[match.opponent]?.name) || 'They')
+  const now = useNow(200)
+  if (!landing || landing.table !== match.table || now - landing.at > LANDING_MS) return null
+  const mine = landing.seat === match.seat
+  const kind = landing.hurt ? poisonKind(landing.kind) : null
+  let big
+  let small
+  let color
+  if (mine && kind) {
+    big = `${kind.icon} ${kind.name.toUpperCase()}!`
+    small = 'Bleh! −1 ❤️'
+    color = '#ff5a5a'
+  } else if (mine) {
+    big = '🥛 MILK!'
+    small = match.vsBot || !DATA.duel.milkBonus ? 'Safe! Yum!' : `Safe! +${money(DATA.duel.milkBonus)}`
+    color = '#ffffff'
+  } else if (kind) {
+    big = '😈 GOTCHA!'
+    small = `${theirName} drank your ${kind.name}! −1 ❤️`
+    color = '#ffe23d'
+  } else {
+    big = '😤 Dodged it…'
+    small = `${theirName} hit the milk`
+    color = '#cfe3ff'
+  }
   return (
-    <div
-      className={`flex items-center gap-2 rounded-xl border-[3px] px-2.5 py-1 ${
-        won ? 'border-[#3dff6a] bg-[#0f3d1c]' : 'border-black/50 bg-black/30'
-      }`}
-    >
-      <span className="stroke-thin w-[6.5rem] truncate text-sm font-bold text-white">
-        {isSelf ? 'You' : name}
-      </span>
-      <span className={`lcd lcd-small ${won ? 'lcd-green' : 'lcd-red'}`}>{pressed ? stopwatch(time) : NO_READING}</span>
-      <span className={`stroke-thin w-[5.2rem] text-right text-sm font-bold ${won ? 'text-[#7dff9a]' : 'text-[#ff9a9a]'}`}>
-        {pressed ? offBy(off) : 'TOO LATE'}
-      </span>
-      <span className="w-6 text-center text-lg leading-none">{bullseye ? '🎯' : won ? '✅' : ''}</span>
-    </div>
-  )
-}
-
-/** Both stops side by side, and who took the round. */
-function RoundReveal({ match }) {
-  const theirName = useGame((s) => (match.opponent && s.players[match.opponent]?.name) || 'Opponent')
-  const mine = match.roundWinner === 'me'
-  const myOff = match.myTime >= 0 ? Math.abs(match.myTime - match.target) : Infinity
-  let headline = 'IT’S A TIE! 🤝'
-  if (mine) headline = 'YOU TAKE THE ROUND! 😎'
-  else if (match.roundWinner === 'them') headline = `${theirName.toUpperCase()} TAKES IT 😬`
-  return (
-    <div className="timer-pos pointer-events-none absolute left-1/2 z-30 -translate-x-1/2">
-      <div className="ui-panel pop-in flex flex-col items-center gap-1.5 px-4 py-3">
-        <span className="stroke-thin text-sm font-bold text-white/85">
-          ROUND {match.round} · 🎯 {stopwatch(match.target)}
-        </span>
-        <RevealRow name="You" isSelf time={match.myTime} target={match.target} won={mine} />
-        <RevealRow name={theirName} time={match.theirTime} target={match.target} won={match.roundWinner === 'them'} />
-        <span
-          key={match.round}
-          className={`slam stroke-text mt-1 text-center text-[1.6rem] font-bold leading-tight ${
-            mine ? 'text-[#7dff7a]' : match.roundWinner === 'them' ? 'text-[#ff6b6b]' : 'text-[#ffcf4a]'
-          }`}
-        >
-          {headline}
-        </span>
-        <span className="stroke-text text-xl font-bold text-white">
-          {match.myScore} - {match.theirScore}
-        </span>
-        {myOff <= TIMER.bullseyeMs && (
-          <span className="stroke-text text-lg font-bold text-[#ffe23d]">🎯 BULLSEYE! +{money(TIMER.bullseyeCash)}</span>
-        )}
+    <Banner top="top-[36%]">
+      <div key={landing.at} className="slam flex flex-col items-center">
+        <div className="stroke-text text-[3.2rem] font-bold leading-none" style={{ color }}>
+          {big}
+        </div>
+        <div className="stroke-text mt-1 text-2xl font-bold text-white">{small}</div>
       </div>
-    </div>
+    </Banner>
   )
 }
 
 /**
- * A soft glow around the screen's edges when your button zaps you (electric blue) or
- * you hit a bullseye (gold): a fade in and out, never a hard full-screen flash.
+ * A soft glow round the screen's edges when your cookie lands in poison (green) or
+ * you win (gold): a fade in and out, never a hard full-screen flash.
  */
 function ScreenFlash() {
   const flash = useGame((s) => s.flash)
@@ -459,13 +459,13 @@ function ScreenFlash() {
   return (
     <div
       key={flash.at}
-      className={`pointer-events-none absolute inset-0 z-[45] ${flash.kind === 'zap' ? 'flash-zap' : 'flash-golden'}`}
+      className={`pointer-events-none absolute inset-0 z-[45] ${flash.kind === 'poison' ? 'flash-poison' : 'flash-golden'}`}
       style={{ animationDelay: `${flash.delay || 0}ms` }}
     />
   )
 }
 
-/** Quick phrases bought in the Store, said in a bubble over your head. */
+/** Quick phrases bought in the shop, said in a bubble over your head. */
 function EmotePanel({ hiddenInPortrait }) {
   const owned = useGame((s) => s.profile?.ownedEmotes) || []
   const isOpen = useGame((s) => s.emotesOpen)
@@ -515,8 +515,8 @@ function EmotePanel({ hiddenInPortrait }) {
 }
 
 const RESULT_TEXT = {
-  win: { timer: 'Your timing was better!', forfeit: 'They quit the duel!', afk: 'They stopped pressing 😴' },
-  lose: { timer: 'Their timing was better', forfeit: 'You quit the duel', afk: 'You stopped pressing' },
+  win: { hearts: 'Last cookie standing!', forfeit: 'They quit the duel!', afk: 'They stopped playing 😴' },
+  lose: { hearts: 'Your cookie got cooked', forfeit: 'You quit the duel', afk: 'You stopped playing' },
 }
 
 function ResultBanner() {
@@ -535,7 +535,7 @@ function ResultBanner() {
   // A quitter's money changes hands: it is already in the winner's reward.
   if (result.penalty && result.win) reward = `+${money(result.reward)} 💵 (incl. their ${money(result.penalty)})`
   const lost = result.penalty && !result.win ? `−${money(result.penalty)}` : ''
-  const title = result.win ? 'YOU WIN! 🏆' : result.reason === 'timer' ? 'EJECTED! 🚀' : 'YOU LOSE 😭'
+  const title = result.win ? 'YOU WIN! 🏆' : result.reason === 'hearts' ? 'COOKED! 💀' : 'YOU LOSE 😭'
 
   return (
     <Banner top="top-[24%]">
@@ -545,9 +545,11 @@ function ResultBanner() {
         >
           {title}
         </div>
-        {result.reason === 'timer' && (
-          <div className="stroke-text mt-1 text-3xl font-bold text-white">
-            {result.score[0]} - {result.score[1]}
+        {result.reason === 'hearts' && (
+          <div className="mt-2 flex items-center gap-3 text-2xl">
+            <Hearts hearts={result.hearts[0]} max={DATA.duel.hearts} />
+            <span className="stroke-text text-xl font-bold text-white">vs</span>
+            <Hearts hearts={result.hearts[1]} max={DATA.duel.hearts} />
           </div>
         )}
         <div className="stroke-text mt-2 text-2xl font-bold text-white">
@@ -555,12 +557,15 @@ function ResultBanner() {
           {reward && <span className="text-[#5cff5c]">{`  ·  ${reward}`}</span>}
           {lost && <span className="text-[#ff6b6b]">{`  ·  ${lost}`}</span>}
         </div>
+        {result.vsBot && (
+          <div className="stroke-thin mt-1 text-sm font-bold text-white/80">Practice vs a bot: wins vs players count on the leaderboards!</div>
+        )}
       </div>
     </Banner>
   )
 }
 
-/** Everything on screen while seated at a table: waiting, countdown, the duel. */
+/** Everything on screen while at a table: waiting, countdown, the duel. */
 export function MatchUI() {
   const match = useGame((s) => s.match)
   const quitAsk = useGame((s) => s.quitAsk)
@@ -571,10 +576,15 @@ export function MatchUI() {
   useEffect(() => {
     if (countdown) sfx.tick()
   }, [countdown])
+  // ...and on the last three seconds to drop.
+  const myTurnLeft =
+    match?.phase === 'aim' && match.turn === match.seat ? secondsLeft(match.endsAt, now) : 0
+  useEffect(() => {
+    if (myTurnLeft > 0 && myTurnLeft <= 3) sfx.tick()
+  }, [myTurnLeft])
 
   const playing = isPlayingPhase(match?.phase)
-  // The clock has started even if the server hasn't said "running" yet.
-  const clockOn = match && (match.phase === 'running' || (match.phase === 'target' && now >= match.startAt))
+  const myTurn = match?.phase === 'aim' && match.turn === match.seat
 
   return (
     <>
@@ -585,7 +595,11 @@ export function MatchUI() {
       {match?.phase === 'waiting' && (
         <div className="pointer-events-none absolute bottom-[16%] left-1/2 z-30 flex -translate-x-1/2 flex-col items-center gap-2">
           <span className="stroke-text whitespace-nowrap text-2xl font-bold text-white">Waiting for an opponent… (1/2)</span>
-          <LeaveButton />
+          <WaitingHint />
+          <div className="flex items-center gap-2">
+            <VsBotButton />
+            <LeaveButton />
+          </div>
         </div>
       )}
 
@@ -602,17 +616,12 @@ export function MatchUI() {
         </>
       )}
 
-      {(match?.phase === 'target' || match?.phase === 'running') && <ClockSounds />}
-      {match?.phase === 'target' && !clockOn && <TargetCard match={match} now={now} />}
-      {clockOn && (
-        <>
-          <ClockPanel match={match} />
-          <StopButton match={match} />
-        </>
-      )}
-      {match?.phase === 'reveal' && <RoundReveal match={match} />}
+      {playing && <PhaseBanner match={match} now={now} />}
+      {match?.phase === 'poison' && <CupPicker match={match} />}
+      {myTurn && <DropButton />}
+      {match && <LandingPopup match={match} />}
       {playing && (
-        <div className="pointer-events-none absolute bottom-3 right-3 z-40 portrait:bottom-auto portrait:top-[7.5rem]">
+        <div className="pointer-events-none absolute bottom-3 right-3 z-40 portrait:bottom-auto portrait:top-[9.5rem]">
           <LeaveButton label="Quit duel" forfeit />
         </div>
       )}
